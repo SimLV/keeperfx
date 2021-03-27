@@ -145,6 +145,11 @@ enum TbScriptCommands {
     Cmd_CREATE_EFFECTS_LINE               = 124,
     Cmd_DISPLAY_MESSAGE                   = 125,
     Cmd_QUICK_MESSAGE                     = 126,
+    Cmd_USE_SPELL_ON_CREATURE             = 127,
+    Cmd_SET_HEART_HEALTH                  = 128,
+    Cmd_ADD_HEART_HEALTH                  = 129,
+    Cmd_CREATURE_ENTRANCE_LEVEL           = 130,
+    Cmd_RANDOMISE_FLAG                    = 131,
 };
 
 enum ScriptVariables {
@@ -213,6 +218,8 @@ enum ScriptVariables {
   SVar_BOX_ACTIVATED                   = 66,
   SVar_SACRIFICED                      = 67,  // Per model
   SVar_REWARDED                        = 68,  // Per model
+  SVar_EVIL_CREATURES_CONVERTED        = 69,
+  SVar_GOOD_CREATURES_CONVERTED        = 70,
  };
 
 enum MapLocationTypes {

@@ -2738,13 +2738,23 @@ TbBool update_thing(struct Thing *thing)
                 thing->veloc_base.y.val = thing->veloc_base.y.val * (256 - (int)thing->field_24) / 256;
             if ((thing->movement_flags & TMvF_Flying) == 0)
             {
-                thing->veloc_push_add.z.val -= thing->field_20;
+                thing->veloc_push_add.z.val -= thing->fall_acceleration;
                 thing->state_flags |= TF1_PushAdd;
             } else
             {
                 // For flying creatures, the Z velocity should also decrease over time
                 if (thing->veloc_base.z.val != 0)
+                {
                     thing->veloc_base.z.val = thing->veloc_base.z.val * (256 - (int)thing->field_24) / 256;
+                }
+                else 
+                {
+                    if (thing_above_flight_altitude(thing))
+                    {
+                        thing->veloc_push_add.z.val -= thing->fall_acceleration;
+                        thing->state_flags |= TF1_PushAdd;
+                    }
+                }
             }
         } else
         {
@@ -3521,6 +3531,48 @@ struct Thing *get_creature_of_model_training_at_subtile_and_owned_by(MapSubtlCoo
 struct Thing *get_nearest_object_at_position(MapSubtlCoord stl_x, MapSubtlCoord stl_y)
 {
   return _DK_get_nearest_object_at_position(stl_x, stl_y);
+}
+
+struct Thing *get_nearest_thing_at_position(MapSubtlCoord stl_x, MapSubtlCoord stl_y)
+{
+  long OldDistance = 0x7FFFFFFF;
+  struct Thing *thing;
+  unsigned char n,k = 0;
+  struct Thing *result = NULL;
+  MapSubtlCoord x,y; 
+  do
+  {
+    n = 0;
+    y = stl_y + k;  
+    if ( (y >= 0) && (y < 256) )
+    {
+      do
+      {
+        x = stl_x + n;  
+        if ( (x >= 0) && (x < 256) )
+        {
+          struct Map *blk = get_map_block_at(x, y);
+          thing = thing_get(get_mapwho_thing_index(blk));
+          while (!thing_is_invalid(thing)) 
+          {
+            TRACE_THING(thing);
+            long NewDistance = get_2d_box_distance_xy(stl_x, stl_y, thing->mappos.x.stl.num, thing->mappos.y.stl.num);
+            if ( NewDistance < OldDistance )
+            {
+                OldDistance = NewDistance;
+                result = thing;
+            }
+            thing = thing_get(thing->next_on_mapblk);
+          }
+        }
+      n++;
+      }
+      while ( n < STL_PER_SLB );
+    }
+    k++;
+  }
+  while ( k < STL_PER_SLB );
+  return result;
 }
 
 void remove_dead_creatures_from_slab(MapSlabCoord slb_x, MapSlabCoord slb_y)

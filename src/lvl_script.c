@@ -134,6 +134,8 @@ const struct NamedCommand variable_desc[] = {
     {"SKELETONS_RAISED",            SVar_SKELETONS_RAISED},
     {"VAMPIRES_RAISED",             SVar_VAMPIRES_RAISED},
     {"CREATURES_CONVERTED",         SVar_CREATURES_CONVERTED},
+    {"EVIL_CREATURES_CONVERTED",    SVar_EVIL_CREATURES_CONVERTED},
+    {"GOOD_CREATURES_CONVERTED",    SVar_GOOD_CREATURES_CONVERTED},
     {"TIMES_ANNOYED_CREATURE",      SVar_TIMES_ANNOYED_CREATURE},
     {"TIMES_TORTURED_CREATURE",     SVar_TIMES_TORTURED_CREATURE},
     {"TOTAL_DOORS_MANUFACTURED",    SVar_TOTAL_DOORS_MANUFACTURED},
@@ -610,6 +612,10 @@ long get_players_range_f(long plr_range_id, int *plr_start, int *plr_end, const 
 long get_players_range_from_str_f(const char *plrname, int *plr_start, int *plr_end, const char *func_name, long ln_num)
 {
     long plr_range_id = get_rid(player_desc, plrname);
+    if (plr_range_id == -1)
+    {
+        plr_range_id = get_rid(cmpgn_human_player_options, plrname);
+    }
     switch (get_players_range_f(plr_range_id, plr_start, plr_end, func_name, ln_num))
     {
     case -1:
@@ -634,8 +640,12 @@ TbBool get_player_id_f(const char *plrname, long *plr_range_id, const char *func
     *plr_range_id = get_rid(player_desc, plrname);
     if (*plr_range_id == -1)
     {
-      ERRORMSG("%s(line %lu): Invalid player name, '%s'",func_name,ln_num, plrname);
-      return false;
+      *plr_range_id = get_rid(cmpgn_human_player_options, plrname);
+      if (*plr_range_id == -1)
+      {
+        ERRORMSG("%s(line %lu): Invalid player name, '%s'",func_name,ln_num, plrname);
+        return false;
+      }
     }
     return true;
 }
@@ -3283,15 +3293,81 @@ void command_use_special_locate_hidden_world()
     command_add_value(Cmd_USE_SPECIAL_LOCATE_HIDDEN_WORLD, 0, 0, 0, 0);
 }
 
-void command_change_creatures_annoyance(long plr_range_id, const char *operation, long anger)
+/**
+ * Modifies player's creatures' anger.
+ * @param plyr_idx target player
+ * @param anger anger value. Use double AnnoyLevel (from creature's config file) to fully piss creature. More for longer calm time
+ */
+TbBool script_change_creatures_annoyance(PlayerNumber plyr_idx, ThingModel crmodel, long operation, long anger)
 {
-    long op_id = get_rid(script_operator_desc, operation);
-    if (op_id == -1)
+    SYNCDBG(8, "Starting");
+    struct Dungeon* dungeon = get_players_num_dungeon(plyr_idx);
+    unsigned long k = 0;
+    int i = dungeon->creatr_list_start;
+    while (i != 0)
     {
-        SCRPTERRLOG("Invalid operation for changing creatures' annoyance: '%s'", operation);
+        struct Thing* thing = thing_get(i);
+        TRACE_THING(thing);
+        struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
+        if (thing_is_invalid(thing) || creature_control_invalid(cctrl))
+        {
+            ERRORLOG("Jump to invalid creature detected");
+            break;
+        }
+        i = cctrl->players_next_creature_idx;
+        // Per creature code
+        if (thing->model == crmodel || crmodel == 0)
+        {
+            i = cctrl->players_next_creature_idx;
+            if (operation == SOpr_SET)
+            {
+                anger_set_creature_anger(thing, anger, AngR_Other);
+            }
+            else if (operation == SOpr_INCREASE)
+            {
+                anger_increase_creature_anger(thing, anger, AngR_Other);
+            }
+            else if (operation == SOpr_DECREASE)
+            {
+                anger_reduce_creature_anger(thing, -anger, AngR_Other);
+            }
+
+        }
+        // Thing list loop body ends
+        k++;
+        if (k > CREATURES_COUNT)
+        {
+            ERRORLOG("Infinite loop detected when sweeping creatures list");
+            break;
+        }
+    }
+    SYNCDBG(19, "Finished");
+    return true;
+}
+
+static void change_creatures_annoyance_check(const struct ScriptLine* scline)
+{
+    long crtr_id = parse_creature_name(scline->tp[1]);
+    if (crtr_id == -1)
+    {
+        SCRPTERRLOG("Unknown creature, '%s'", scline->tp[1]);
         return;
     }
-    command_add_value(Cmd_CHANGE_CREATURES_ANNOYANCE, plr_range_id, op_id, anger, 0);
+    long op_id = get_rid(script_operator_desc, scline->tp[2]);
+    if (op_id == -1)
+    {
+        SCRPTERRLOG("Invalid operation for changing creatures' annoyance: '%s'", scline->tp[2]);
+        return;
+    }
+    command_add_value(Cmd_CHANGE_CREATURES_ANNOYANCE, scline->np[0], crtr_id, op_id, scline->np[3]);
+}
+
+static void change_creatures_annoyance_process(struct ScriptContext* context)
+{
+    for (int i = context->plr_start; i < context->plr_end; i++)
+    {
+        script_change_creatures_annoyance(i, context->value->arg0, context->value->arg1, context->value->arg2);
+    }
 }
 
 void command_change_creature_owner(long origin_plyr_idx, const char *crtr_name, const char *criteria, long dest_plyr_idx)
@@ -3380,6 +3456,76 @@ void command_set_game_rule(const char* objectv, unsigned long roomvar)
         return;
     }
     command_add_value(Cmd_SET_GAME_RULE, 0, ruledesc, roomvar, 0);
+}
+
+void command_use_spell_on_creature(long plr_range_id, const char *crtr_name, const char *criteria, const char *magname, int splevel)
+{
+  SCRIPTDBG(11, "Starting");
+  long mag_id = get_rid(spell_desc, magname);
+  if (splevel < 1)
+  {
+    if ( (mag_id == SplK_Heal) || (mag_id == SplK_Armour) || (mag_id == SplK_Speed) || (mag_id == SplK_Disease) || (mag_id == SplK_Invisibility) || (mag_id == SplK_Chicken) )
+    {
+        SCRPTWRNLOG("Spell %s level too low: %d, setting to 1.", magname, splevel);
+    }
+    splevel = 1;
+  }
+  if (splevel > (MAGIC_OVERCHARGE_LEVELS+1)) //Creatures cast spells from level 1 to 10, but 10=9.
+  {
+    SCRPTWRNLOG("Spell %s level too high: %d, setting to %d.", magname, splevel, (MAGIC_OVERCHARGE_LEVELS+1));
+    splevel = MAGIC_OVERCHARGE_LEVELS;
+  }
+  splevel--;
+  if (mag_id == -1)
+  {
+    SCRPTERRLOG("Unknown magic, '%s'", magname);
+    return;
+  }
+  long crtr_id = parse_creature_name(crtr_name);
+  if (crtr_id == -1) {
+    SCRPTERRLOG("Unknown creature, '%s'", crtr_name);
+    return;
+  }
+  long select_id = get_rid(creature_select_criteria_desc, criteria);
+  if (select_id == -1) {
+    SCRPTERRLOG("Unknown select criteria, '%s'", criteria);
+    return;
+  }
+  // SpellKind sp = mag_id;
+  // encode params: free, magic, caster, level -> into 4xbyte: FMCL
+  long fmcl_bytes;
+  {
+      signed char m = mag_id, lvl = splevel;
+      fmcl_bytes = (m << 8) | lvl;
+  }
+  command_add_value(Cmd_USE_SPELL_ON_CREATURE, plr_range_id, crtr_id, select_id, fmcl_bytes);
+}
+
+void command_set_heart_health(long plr_range_id, int health)
+{
+  command_add_value(Cmd_SET_HEART_HEALTH, plr_range_id, health, 0, 0);
+}
+
+void command_add_heart_health(long plr_range_id, int health, TbBool warning)
+{
+  command_add_value(Cmd_ADD_HEART_HEALTH, plr_range_id, health, warning, 0);
+}
+
+void command_creature_entrance_level(long plr_range_id, unsigned char val)
+{
+  command_add_value(Cmd_CREATURE_ENTRANCE_LEVEL, plr_range_id, val, 0, 0);
+}
+
+void command_randomise_flag(long plr_range_id, const char *flgname, long val)
+{
+    long flg_id;
+    long flag_type;
+    if (!parse_set_varib(flgname, &flg_id, &flag_type))
+    {
+        SCRPTERRLOG("Unknown flag, '%s'", flgname);
+        return;
+    }
+  command_add_value(Cmd_RANDOMISE_FLAG, plr_range_id, flg_id, val, flag_type);
 }
 
 /** Adds a script command to in-game structures.
@@ -3616,6 +3762,9 @@ void script_add_command(const struct CommandDesc *cmd_desc, const struct ScriptL
     case Cmd_USE_POWER_ON_CREATURE:
         command_use_power_on_creature(scline->np[0], scline->tp[1], scline->tp[2], scline->np[3], scline->tp[4], scline->np[5], scline->np[6]);
         break;
+    case Cmd_USE_SPELL_ON_CREATURE:
+        command_use_spell_on_creature(scline->np[0], scline->tp[1], scline->tp[2], scline->tp[3], scline->np[4]);
+        break;
     case Cmd_USE_POWER_AT_SUBTILE:
         command_use_power_at_subtile(scline->np[0], scline->np[1], scline->np[2], scline->tp[3], scline->np[4], scline->np[5]);
         break;
@@ -3636,9 +3785,6 @@ void script_add_command(const struct CommandDesc *cmd_desc, const struct ScriptL
         break;
     case Cmd_USE_SPECIAL_LOCATE_HIDDEN_WORLD:
         command_use_special_locate_hidden_world();
-        break;
-    case Cmd_CHANGE_CREATURES_ANNOYANCE:
-        command_change_creatures_annoyance(scline->np[0], scline->tp[1], scline->np[2]);
         break;
     case Cmd_CHANGE_CREATURE_OWNER:
         command_change_creature_owner(scline->np[0], scline->tp[1], scline->tp[2], scline->np[3]);
@@ -3682,6 +3828,18 @@ void script_add_command(const struct CommandDesc *cmd_desc, const struct ScriptL
         break;
     case Cmd_COMPUTER_DIG_TO_LOCATION:
         command_computer_dig_to_location(scline->np[0], scline->tp[1], scline->tp[2]);
+        break;
+    case Cmd_SET_HEART_HEALTH:
+        command_set_heart_health(scline->np[0], scline->np[1]);
+        break;
+    case Cmd_ADD_HEART_HEALTH:
+        command_add_heart_health(scline->np[0], scline->np[1], scline->np[2]);
+        break;
+    case Cmd_CREATURE_ENTRANCE_LEVEL:
+        command_creature_entrance_level(scline->np[0], scline->np[1]);
+        break;
+    case Cmd_RANDOMISE_FLAG:
+        command_randomise_flag(scline->np[0], scline->tp[1], scline->np[2]);
         break;
     default:
         SCRPTERRLOG("Unhandled SCRIPT command '%s'", scline->tcmnd);
@@ -4999,7 +5157,7 @@ TbResult script_use_power_on_creature(PlayerNumber plyr_idx, long crmodel, long 
         block |= pwkind == PwrK_SIGHT;
         if (block)
         {
-          SYNCDBG(5,"Found creature to cast the spell on but it is being held.");
+          SYNCDBG(5,"Found creature to use power on but it is being held.");
           return Lb_FAIL;
         }
     }
@@ -5035,8 +5193,64 @@ TbResult script_use_power_on_creature(PlayerNumber plyr_idx, long crmodel, long 
       case PwrK_SIGHT:
         return magic_use_power_sight(caster, stl_x, stl_y, splevel, spell_flags);
       default:
-        ERRORLOG("Power not supported at script use_power_on_creature: %d", (int) pwkind);
+        SCRPTERRLOG("Power not supported for this command: %d", (int) pwkind);
         return Lb_FAIL;
+    }
+}
+
+TbResult script_use_spell_on_creature(PlayerNumber plyr_idx, long crmodel, long criteria, long fmcl_bytes)
+{
+    struct Thing *thing = script_get_creature_by_criteria(plyr_idx, crmodel, criteria);
+    if (thing_is_invalid(thing)) {
+        SYNCDBG(5,"No matching player %d creature of model %d found to use spell on.",(int)plyr_idx,(int)crmodel);
+        return Lb_FAIL;
+    }
+    SpellKind spkind = (fmcl_bytes >> 8) & 255;
+    if ( ( (spkind == SplK_Freeze) || (spkind == SplK_Light) || (spkind == SplK_Armour) || (spkind == SplK_Rebound) || (spkind == SplK_Heal) || (spkind == SplK_Invisibility) || (spkind == SplK_Teleport) || (spkind == SplK_Speed) || (spkind == SplK_Slow) || (spkind == SplK_Fly) || (spkind == SplK_Sight) )
+        || ( (spkind == SplK_Disease) && ((get_creature_model_flags(thing) & CMF_NeverSick) == 0) ) || ( (spkind == SplK_Chicken) && ((get_creature_model_flags(thing) & CMF_NeverChickens) == 0) ) )
+    {
+        if (thing_is_picked_up(thing))
+        {
+            SYNCDBG(5,"Found creature to cast the spell on but it is being held.");
+            return Lb_FAIL;          
+        }
+        const struct SpellInfo* spinfo = get_magic_info(spkind);
+        unsigned short sound;
+        if (spinfo->caster_affected)
+        {
+            sound = spinfo->caster_affect_sound;
+        }
+        else if ( (spkind == SplK_Freeze) || (spkind == SplK_Slow) )
+        {
+            sound = 50;
+        }
+        else if (spkind == SplK_Disease)
+        {
+            sound = 59;
+        }
+        else if (spkind == SplK_Chicken)
+        {
+            sound = 109;
+        }
+        else
+        {
+            sound = 0;
+        }
+        long splevel = fmcl_bytes & 255;
+        thing_play_sample(thing, sound, NORMAL_PITCH, 0, 3, 0, 4, FULL_LOUDNESS);
+        apply_spell_effect_to_thing(thing, spkind, splevel);
+        if (spkind == SplK_Disease)
+        {
+            struct CreatureControl *cctrl;
+            cctrl = creature_control_get_from_thing(thing);
+            cctrl->disease_caster_plyridx = game.neutral_player_num;
+        }
+        return Lb_SUCCESS;
+    }
+    else
+    {
+        SCRPTERRLOG("Spell not supported for this command: %d", (int)spkind);
+        return Lb_FAIL; 
     }
 }
 
@@ -5163,52 +5377,6 @@ void script_use_special_multiply_creatures(PlayerNumber plyr_idx)
 void script_use_special_make_safe(PlayerNumber plyr_idx)
 {
     make_safe(get_player(plyr_idx));
-}
-
-/**
- * Modifies player's creatures' anger.
- * @param plyr_idx target player
- * @param anger anger value. Use double AnnoyLevel (from creature's config file) to fully piss creature. More for longer calm time
- */
-TbBool script_change_creatures_annoyance(PlayerNumber plyr_idx, long operation, long anger)
-{
-    SYNCDBG(8,"Starting");
-    struct Dungeon* dungeon = get_players_num_dungeon(plyr_idx);
-    unsigned long k = 0;
-    int i = dungeon->creatr_list_start;
-    while (i != 0)
-    {
-        struct Thing* thing = thing_get(i);
-        TRACE_THING(thing);
-        struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
-        if (thing_is_invalid(thing) || creature_control_invalid(cctrl))
-        {
-            ERRORLOG("Jump to invalid creature detected");
-            break;
-        }
-        i = cctrl->players_next_creature_idx;
-        if (operation == SOpr_SET)
-        {
-            anger_set_creature_anger(thing, anger, AngR_Other);
-        }
-        else if (operation == SOpr_INCREASE)
-        {
-            anger_increase_creature_anger(thing, anger, AngR_Other);
-        }
-        else if (operation == SOpr_DECREASE)
-        {
-            anger_reduce_creature_anger(thing, -anger, AngR_Other);
-        }
-        // Thing list loop body ends
-        k++;
-        if (k > CREATURES_COUNT)
-        {
-            ERRORLOG("Infinite loop detected when sweeping creatures list");
-            break;
-        }
-    }
-    SYNCDBG(19,"Finished");
-    return true;
 }
 
 /**
@@ -5466,6 +5634,12 @@ long get_condition_value(PlayerNumber plyr_idx, unsigned char valtype, unsigned 
     case SVar_REWARDED:
         dungeonadd = get_dungeonadd(plyr_idx);
         return dungeonadd->creature_awarded[validx];
+    case SVar_EVIL_CREATURES_CONVERTED:
+        dungeonadd = get_dungeon(plyr_idx);
+        return dungeonadd->evil_creatures_converted;
+    case SVar_GOOD_CREATURES_CONVERTED:
+        dungeonadd = get_dungeon(plyr_idx);
+        return dungeonadd->good_creatures_converted;
     default:
         break;
     };
@@ -6294,6 +6468,12 @@ void script_process_value(unsigned long var_index, unsigned long plr_range_id, l
           script_use_power_on_creature(i, val2, val3, val4);
       }
       break;
+    case Cmd_USE_SPELL_ON_CREATURE:
+      for (i=plr_start; i < plr_end; i++)
+      {
+          script_use_spell_on_creature(i, val2, val3, val4);
+      }
+      break;
     case Cmd_COMPUTER_DIG_TO_LOCATION:
         for (i = plr_start; i < plr_end; i++)
         {
@@ -6342,12 +6522,6 @@ void script_process_value(unsigned long var_index, unsigned long plr_range_id, l
     case Cmd_USE_SPECIAL_LOCATE_HIDDEN_WORLD:
       script_use_special_locate_hidden_world();
       break;
-    case Cmd_CHANGE_CREATURES_ANNOYANCE:
-      for (i=plr_start; i < plr_end; i++)
-      {
-          script_change_creatures_annoyance(i, val2, val3);
-      }
-      break;
     case Cmd_CHANGE_CREATURE_OWNER:
       for (i=plr_start; i < plr_end; i++)
       {
@@ -6384,6 +6558,69 @@ void script_process_value(unsigned long var_index, unsigned long plr_range_id, l
         message_add_fmt(val2, "%s", get_string(val3));
         break;        
   }
+  case Cmd_SET_HEART_HEALTH:
+  {
+    struct Thing* heartng = get_player_soul_container(plr_range_id);
+    if (thing_is_dungeon_heart(heartng))
+    {
+        heartng->health = val2;
+    }
+    break;
+  }
+  case Cmd_ADD_HEART_HEALTH:
+  {
+    struct Thing* heartng = get_player_soul_container(plr_range_id);
+    if (thing_is_dungeon_heart(heartng))
+    {
+        short health = heartng->health;
+        heartng->health += val2;
+        if (val3)
+        {
+            if (heartng->health < health)
+            {
+                event_create_event_or_update_nearby_existing_event(heartng->mappos.x.val, heartng->mappos.y.val, EvKind_HeartAttacked, heartng->owner, heartng->index);
+                if (is_my_player_number(heartng->owner))
+                {
+                    output_message(SMsg_HeartUnderAttack, 400, true);
+                }
+            }
+        }
+    }
+    break;
+  }
+  case Cmd_CREATURE_ENTRANCE_LEVEL:
+  {
+    if (val2 > 0)
+    {
+        struct DungeonAdd* dungeonadd;
+        if (plr_range_id == ALL_PLAYERS)
+        {
+            for (i = PLAYER3; i >= PLAYER0; i--)
+            {
+                dungeonadd = get_dungeonadd(i);
+                if (!dungeonadd_invalid(dungeonadd))
+                {
+                    dungeonadd->creature_entrance_level = (val2 - 1);
+                }
+            }
+        }
+        else
+        {
+            dungeonadd = get_dungeonadd(plr_range_id);
+            if (!dungeonadd_invalid(dungeonadd))
+            {
+                dungeonadd->creature_entrance_level = (val2 - 1);
+            }
+        }
+    }
+    break;
+  }
+  case Cmd_RANDOMISE_FLAG:
+      for (i=plr_start; i < plr_end; i++)
+      {
+          set_variable(i, val4, val2, (rand() % val3) + 1);
+      }
+      break;
   case Cmd_SET_GAME_RULE:
       switch (val2)
       {
@@ -6742,7 +6979,7 @@ const struct CommandDesc command_desc[] = {
   {"USE_SPECIAL_MULTIPLY_CREATURES",    "PN      ", Cmd_USE_SPECIAL_MULTIPLY_CREATURES, NULL, NULL},
   {"USE_SPECIAL_MAKE_SAFE",             "P       ", Cmd_USE_SPECIAL_MAKE_SAFE, NULL, NULL},
   {"USE_SPECIAL_LOCATE_HIDDEN_WORLD",   "        ", Cmd_USE_SPECIAL_LOCATE_HIDDEN_WORLD, NULL, NULL},
-  {"CHANGE_CREATURES_ANNOYANCE",        "PAN     ", Cmd_CHANGE_CREATURES_ANNOYANCE, NULL, NULL},
+  {"CHANGE_CREATURES_ANNOYANCE",        "PC!AN   ", Cmd_CHANGE_CREATURES_ANNOYANCE, &change_creatures_annoyance_check, &change_creatures_annoyance_process},
   {"ADD_TO_FLAG",                       "PAN     ", Cmd_ADD_TO_FLAG, NULL, NULL},
   {"SET_CAMPAIGN_FLAG",                 "PAN     ", Cmd_SET_CAMPAIGN_FLAG, NULL, NULL},
   {"ADD_TO_CAMPAIGN_FLAG",              "PAN     ", Cmd_ADD_TO_CAMPAIGN_FLAG, NULL, NULL},
@@ -6764,6 +7001,11 @@ const struct CommandDesc command_desc[] = {
   {"IF_SLAB_TYPE",                      "NNS     ", Cmd_IF_SLAB_TYPE, NULL, NULL},
   {"QUICK_MESSAGE",                     "NAA     ", Cmd_QUICK_MESSAGE, NULL, NULL},
   {"DISPLAY_MESSAGE",                   "NA      ", Cmd_DISPLAY_MESSAGE, NULL, NULL},
+  {"USE_SPELL_ON_CREATURE",             "PC!AAN  ", Cmd_USE_SPELL_ON_CREATURE, NULL, NULL},
+  {"SET_HEART_HEALTH",                  "PN      ", Cmd_SET_HEART_HEALTH, NULL, NULL},
+  {"ADD_HEART_HEALTH",                  "PNN     ", Cmd_ADD_HEART_HEALTH, NULL, NULL},
+  {"CREATURE_ENTRANCE_LEVEL",           "PN      ", Cmd_CREATURE_ENTRANCE_LEVEL, NULL, NULL},
+  {"RANDOMISE_FLAG",                    "PAN     ", Cmd_RANDOMISE_FLAG, NULL, NULL},
   {NULL,                                "        ", Cmd_NONE, NULL, NULL},
 };
 
