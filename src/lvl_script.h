@@ -39,7 +39,7 @@ extern "C" {
 #define WIN_CONDITIONS_COUNT     12
 #define DOT_COMMANDS_COUNT       256
 #define GROUPS_COUNT             8
-#define GROUP_RECORDS_COUNT      256
+#define SLIST_RECORDS_COUNT      256
 
 #define CONDITION_ALWAYS (CONDITIONS_COUNT)
 
@@ -178,7 +178,7 @@ struct Condition {
   unsigned char plyr_range_right;
   unsigned char variabl_type_right;
   unsigned short variabl_idx_right;
-  DotCommandIdx dot_to_activate;
+  SListRecordIdx dotlist_to_activate;
   TbBool use_second_variable;
 };
 
@@ -202,20 +202,27 @@ struct ScriptFxLine
     int step;
 };
 
-struct ThingGroupRecord
+struct ThingListRecord
 {
-    ThingGroupRecordIdx next_record;
-    ThingIndex thing;
+    SListRecordIdx next_record;
+    union
+    {
+        ThingIndex thing;
+        DotCommandIdx dot_command;
+    };
 };
 
 struct DotCommand
 {
     DotCommandIdx chain_next; // next DotCommand (will be processed same turn)
-    DotCommandFnIdx command;  // command function
+    DotCommandFnIdx command_fn;  // command function
 
     unsigned char command_index; // from `enum TbScriptCommands` if any
     TbMapLocation location;
+    ThingModel creature;
     PlayerNumber active_player;
+
+    int assign_to; // index into script.groups
 };
 
 struct LevelScript {
@@ -241,9 +248,10 @@ struct LevelScript {
     // Store strings used at level here
     char strings[2048];
     char *next_string;
-    ThingGroupRecordIdx groups[GROUPS_COUNT];
-    struct ThingGroupRecord group_records[GROUP_RECORDS_COUNT];
-    ThingGroupRecordIdx free_group_record;
+    SListRecordIdx groups[GROUPS_COUNT];
+    struct ThingListRecord list_records[SLIST_RECORDS_COUNT];
+    SListRecordIdx free_list_record_num;
+    SListRecordIdx free_list_record_idx;
 };
 
 /******************************************************************************/
@@ -266,6 +274,8 @@ TbBool preload_script(long lvnum);
 void level_version_check(const struct ScriptLine* scline);
 long get_condition_value(PlayerNumber plyr_idx, unsigned char valtype, unsigned char a3);
 void process_level_script(void);
+
+void process_dot_script(SListRecordIdx cmd);
 /******************************************************************************/
 #ifdef __cplusplus
 }

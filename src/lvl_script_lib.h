@@ -209,7 +209,7 @@ struct DotCommandDesc
 struct ParserThingGroup
 {
     char                    name[COMMAND_WORD_LEN];
-    ThingGroupRecordIdx     id;
+    int                     id;
     TbBool                  used;
 };
 
@@ -233,6 +233,7 @@ struct ParserContext
 
     PlayerNumber active_player;
     TbMapLocation location;
+    ThingModel creature;
 
     TbBool player_is_set;
     TbBool location_is_set;
@@ -360,6 +361,8 @@ enum ScriptVariables {
 extern char* get_next_token(char *data, struct CommandToken *token);
 extern int script_recognize_params(char **line, const struct CommandDesc *cmd_desc, struct ScriptLine *scline, int *para_level, int expect_level, long file_version);
 extern int count_required_parameters(const char *args);
+extern int filter_criteria_type(long desc_type);
+extern long filter_criteria_loc(long desc_type);
 
 struct Thing* script_get_creature_by_criteria(PlayerNumber plyr_idx, ThingModel crmodel, long criteria);
 ThingModel parse_creature_name(const char *creature_name);

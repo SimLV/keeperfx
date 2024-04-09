@@ -288,12 +288,12 @@ long get_players_range_single_f(long plr_range_id, const char *func_name, long l
     return -2;
 }
 
-static int filter_criteria_type(long desc_type)
+int filter_criteria_type(long desc_type)
 {
     return desc_type & 0x0F;
 }
 
-static long filter_criteria_loc(long desc_type)
+long filter_criteria_loc(long desc_type)
 {
     return desc_type >> 4;
 }

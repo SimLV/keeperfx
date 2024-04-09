@@ -388,6 +388,10 @@ static void process_condition(struct Condition *condt, int idx)
     
     SYNCDBG(19,"Condition type %d status %d",(int)condt->variabl_type,(int)new_status);
     set_flag_value(condt->status, 0x01, new_status);
+    if (new_status)
+    {
+        process_dot_script(condt->dotlist_to_activate);
+    }
     if (((condt->status & 0x01) == 0) || ((condt->status & 0x02) != 0))
     {
         clear_flag(condt->status, 0x04);

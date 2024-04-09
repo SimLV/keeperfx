@@ -291,7 +291,7 @@ typedef unsigned short NavColour;
 /** Either North (0), East (1), South (2), or West (3). */
 typedef signed char SmallAroundIndex;
 
-typedef int ThingGroupRecordIdx;
+typedef int SListRecordIdx;
 typedef unsigned long TbMapLocation;
 
 /**

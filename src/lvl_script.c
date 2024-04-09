@@ -231,7 +231,7 @@ static struct ParserThingGroup *find_group_name(struct CommandToken *token, stru
 static struct ParserThingGroup *create_new_group(struct CommandToken *token, struct ParserContext *context)
 {
     int token_len = token->end - token->start;
-    for (int i = 0; i < STATIC_SIZE(context->groups); i++)
+    for (int i = 1; i < STATIC_SIZE(context->groups); i++)
     {
         struct ParserThingGroup *group = &context->groups[i];
         if (!group->used)
@@ -240,6 +240,7 @@ static struct ParserThingGroup *create_new_group(struct CommandToken *token, str
             strncpy(group->name, token->start, min_len);
             group->name[min_len] = 0;
             group->used = true;
+            group->id = i;
             return group;
         }
     }
@@ -1011,11 +1012,8 @@ static TbBool script_scan_line_dot(char *line, struct ParserContext *context)
         return false;
     }
     // Now we are going to construct chain of commands
-    if (context->is_assign)
-    {
-        if (context->construct_fn)
-            context->construct_fn(context);
-    }
+    if (context->construct_fn)
+        context->construct_fn(context);
     return true;
 }
 
@@ -1059,7 +1057,7 @@ TbBool script_scan_line(char *line, struct ParserContext *context)
                 return false;
             }
             context->is_assign = true;
-            return script_scan_line_dot(line, context);;
+            return script_scan_line_dot(line, context);
         }
         else if (token2.type == TkDot)
         {
@@ -1146,13 +1144,9 @@ short clear_script(void)
     LbMemorySet(&gameadd.script, 0, sizeof(struct LevelScript));
     gameadd.script.next_string = gameadd.script.strings;
     gameadd.script.dot_commands_num = 1;
+    gameadd.script.free_list_record_num = 1;
     set_script_current_condition(CONDITION_ALWAYS);
     text_line_number = 1;
-    return true;
-}
-
-short clear_quick_messages(void)
-{
     for (long i = 0; i < QUICK_MESSAGES_COUNT; i++)
         LbMemorySet(gameadd.quick_messages[i], 0, MESSAGE_TEXT_LEN);
     return true;
@@ -1239,10 +1233,10 @@ static void parse_txt_data(char *script_data, long script_len)
 TbBool preload_script(long lvnum)
 {
   SYNCDBG(7,"Starting");
+  clear_script();
   set_script_current_condition(CONDITION_ALWAYS);
   next_command_reusable = 0;
   level_file_version = DEFAULT_LEVEL_VERSION;
-  clear_quick_messages();
   // Load the file
   long script_len = 1;
   char* script_data = (char*)load_single_map_file_to_buffer(lvnum, "txt", &script_len, LMFF_None);
