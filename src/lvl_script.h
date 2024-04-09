@@ -218,8 +218,15 @@ struct DotCommand
     DotCommandFnIdx command_fn;  // command function
 
     unsigned char command_index; // from `enum TbScriptCommands` if any
-    TbMapLocation location;
-    ThingModel creature;
+    union
+    {
+        ThingModel model;
+        long arg1;
+    };
+    union {
+        TbMapLocation location;
+        long arg2;
+    };
     PlayerNumber active_player;
 
     int assign_to; // index into script.groups
@@ -275,6 +282,7 @@ void level_version_check(const struct ScriptLine* scline);
 long get_condition_value(PlayerNumber plyr_idx, unsigned char valtype, unsigned char a3);
 void process_level_script(void);
 
+TbBool make_read_group(struct ParserContext *context);
 void process_dot_script(SListRecordIdx cmd);
 /******************************************************************************/
 #ifdef __cplusplus

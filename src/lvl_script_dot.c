@@ -21,8 +21,11 @@
 #include "map_data.h"
 #include "player_instances.h"
 #include "thing_data.h"
-#include "post_inc.h"
 #include "bflib_planar.h"
+#include "thing_effects.h"
+#include "thing_physics.h"
+#include "thing_navigate.h"
+#include "post_inc.h"
 
 struct ExecContext {
     SListRecordIdx item;
@@ -66,11 +69,16 @@ static TbBool parse_args(struct ParserContext *context, struct ScriptLine *sclin
 }
 
 /// ********
-#define script_list_add(dst) \
-    dst = script_list_add_f(dst); \
-    (&gameadd.script.list_records[dst])
+#define SCRIPT_LIST_ADD(dst) \
+    SCRIPT_LIST_ADD__(dst, temp_var ## __LINE__ )
 
-SListRecordIdx script_list_add_f(SListRecordIdx idx)
+#define SCRIPT_LIST_ADD__(dst, tmp_var) \
+    SListRecordIdx tmp_var; \
+    (tmp_var) = script_list_add(dst); \
+    if ((dst) == 0)  (dst) = tmp_var;       \
+    (&gameadd.script.list_records[tmp_var])
+
+SListRecordIdx script_list_add(SListRecordIdx idx)
 {
     SListRecordIdx ret;
     if (gameadd.script.free_list_record_idx != 0) // Take one from free list
@@ -80,6 +88,11 @@ SListRecordIdx script_list_add_f(SListRecordIdx idx)
     }
     else
     {
+        if (gameadd.script.free_list_record_num >= SLIST_RECORDS_COUNT)
+        {
+            ERRORLOG("Too many slist items!");
+            return 0;
+        }
         ret = gameadd.script.free_list_record_num++;
     }
 
@@ -155,12 +168,21 @@ struct DotCommand *dot_last(DotCommandIdx idx)
     return cmd;
 }
 
-static struct DotCommand *dot_alloc()
+#define DOT_ALLOC \
+    DotCommandIdx cmd_idx = dot_alloc_(); \
+    struct DotCommand *cmd = &gameadd.script.dot_commands[cmd_idx];
+
+static DotCommandIdx dot_alloc_()
 {// Allocating
     DotCommandIdx idx = gameadd.script.free_dot_command;
     struct DotCommand *cmd = &gameadd.script.dot_commands[idx];
     if (gameadd.script.free_dot_command == 0)
     {
+        if (gameadd.script.dot_commands_num >= DOT_COMMANDS_COUNT)
+        {
+            SCRPTERRLOG("Too many dot commands!");
+            return 0;
+        }
         idx = gameadd.script.dot_commands_num;
         gameadd.script.dot_commands_num++;
         cmd = &gameadd.script.dot_commands[idx];
@@ -170,7 +192,17 @@ static struct DotCommand *dot_alloc()
         gameadd.script.free_dot_command = cmd->chain_next;
     }
     cmd->chain_next = 0;
+    return idx;
+}
+
+void add_to_condition_sublist(struct ParserContext *context, DotCommandIdx cmd_idx)
+{
     // add to condition if any
+    if (context->prev_command != 0)
+    {
+        context->prev_command->chain_next = cmd_idx;
+        return;
+    }
     int condition = get_script_current_condition();
     if (condition == CONDITION_ALWAYS)
     {
@@ -179,9 +211,9 @@ static struct DotCommand *dot_alloc()
     else
     {
         struct Condition* condt = &gameadd.script.conditions[condition];
-        script_list_add(condt->dotlist_to_activate)->dot_command = idx;
+        SCRIPT_LIST_ADD(condt->dotlist_to_activate)->dot_command = cmd_idx;
     }
-    return cmd;
+    context->prev_command = &gameadd.script.dot_commands[cmd_idx];
 }
 
 void dot_finalize(struct DotCommand *cmd)
@@ -203,10 +235,13 @@ static TbBool cmd_set_player(struct ParserContext *context, intptr_t option)
 {
     context->active_player = option;
     context->player_is_set = true;
+    context->fn_type = CtPlayer;
     context->dot_commands = player_dot_commands;
     context->construct_fn = &whine;
     return true;
 }
+
+/// ********
 
 /// find_creatures
 static long add_creatures_diagonal(const struct Thing *thing, MaxTngFilterParam param, long maximizer)
@@ -225,7 +260,7 @@ static long add_creatures_diagonal(const struct Thing *thing, MaxTngFilterParam 
                         return -1;
                     // Just add to a list and wait for another creature
                     gameadd.script.list_records[param->num2].thing = thing->index;
-                    param->num2 = script_list_add_f(param->num2); // Adding empty element ahead
+                    param->num2 = script_list_add(param->num2); // Adding empty element ahead
                     return -1;
                 }
             }
@@ -237,7 +272,7 @@ static long add_creatures_diagonal(const struct Thing *thing, MaxTngFilterParam 
 
 static void find_creatures_process(struct DotCommand *cmd, struct ExecContext *context)
 {
-    SListRecordIdx lst = script_list_add_f(0);
+    SListRecordIdx lst = script_list_add(0);
     gameadd.script.list_records[lst].thing = 0;
 
     int loc = filter_criteria_loc(cmd->location);
@@ -258,7 +293,7 @@ static void find_creatures_process(struct DotCommand *cmd, struct ExecContext *c
 
     Thing_Maximizer_Filter filter = add_creatures_diagonal;
     struct CompoundTngFilterParam param;
-    param.model_id = cmd->creature;
+    param.model_id = cmd->model;
     param.plyr_idx = (unsigned char)cmd->active_player;
     param.ptr1 = apt;
     param.num2 = lst;
@@ -284,10 +319,11 @@ static void find_creatures_process(struct DotCommand *cmd, struct ExecContext *c
 
 static TbBool make_find_creatures(struct ParserContext *context)
 {
-    struct DotCommand *cmd = dot_alloc();
+    DOT_ALLOC
+    add_to_condition_sublist(context, cmd_idx);
     cmd->active_player = context->active_player;
     cmd->location = context->location;
-    cmd->creature = context->creature;
+    cmd->model = context->creature;
     cmd->command_fn = 1;
     if (context->is_assign)
     {
@@ -303,7 +339,7 @@ static TbBool pl_find_creatures(struct ParserContext *context, intptr_t option)
     if (!parse_args(context, &scline))
         return false;
 
-    if ((context->fn_type != CtUnused) && (context->fn_type != CtCreature))
+    if ((context->fn_type != CtPlayer) && (context->fn_type != CtCreature))
     {
         // TODO: construct next item
     }
@@ -319,21 +355,69 @@ static TbBool pl_find_creatures(struct ParserContext *context, intptr_t option)
     }
     context->creature = scline.np[1];
     context->fn_type = CtCreature;
+    // This is used because I expect filters after this one
     context->construct_fn = &make_find_creatures;
     // If chain is stopped here we should construct creature group
     return true;
 }
 
+/// ********
+
+static void creature_to_loc_process(struct DotCommand *cmd, struct ExecContext *context)
+{
+    // I don't store locations for now
+}
+
 static TbBool cre_cmd_location(struct ParserContext *context, intptr_t option)
 {
-    if ((context->fn_type != CtUnused) && (context->fn_type != CtLocation))
+    if (context->fn_type != CtCreature)
     {
-        // TODO: construct next item
-
+        SCRPTERRLOG("Unexpected!");
     }
     context->dot_commands = location_dot_commands;
-    // If chain is stopped here we should construct location
+    context->fn_type = CtLocation;
+
+    //DOT_ALLOC
+    //add_to_condition_sublist(cmd_idx);
+    //cmd->command_fn = 2;
+    
+    // If chain is stopped here we should construct location into var (but we will whine instead)
+    context->construct_fn = &whine;
     return true;
+}
+
+/// ********
+
+static void create_effect_process(struct DotCommand *cmd, struct ExecContext *context)
+{
+    SListRecordIdx idx = context->item;
+    struct ThingListRecord *item;
+    for (; idx != 0; idx = item->next_record)
+    {
+        item = &gameadd.script.list_records[idx];
+        struct Thing *thing = thing_get(item->thing);
+        struct Coord3d pos;
+        
+        set_coords_to_subtile_center(&pos, thing->mappos.x.stl.num,  thing->mappos.y.stl.num, 0);
+        pos.z.val += get_floor_height(pos.x.stl.num, pos.y.stl.num);
+        TbBool Price = (cmd->model == -(TngEffElm_Price));
+        if (Price)
+        {
+            pos.z.val += 128;
+        }
+        struct Thing* efftng = create_used_effect_or_element(&pos, cmd->model, game.neutral_player_num);
+        if (!thing_is_invalid(efftng))
+        {
+            if (thing_in_wall_at(efftng, &efftng->mappos))
+            {
+                move_creature_to_nearest_valid_position(efftng);
+            }
+            if (Price)
+            {
+                efftng->price_effect.number = cmd->arg2;
+            }
+        }
+    }
 }
 
 static TbBool loc_cmd_create_effect(struct ParserContext *context, intptr_t option)
@@ -343,9 +427,47 @@ static TbBool loc_cmd_create_effect(struct ParserContext *context, intptr_t opti
     if (!parse_args(context, &scline))
         return false;
 
+    DOT_ALLOC
+    add_to_condition_sublist(context, cmd_idx);
+    cmd->active_player = context->active_player;
+    cmd->model = scline.np[0];
+    cmd->arg2 = scline.np[1];
+    cmd->command_fn = 3;
+    
+    context->construct_fn = NULL;
     // If chain is stopped here we should keep location
     return true;
 }
+
+/// ********
+
+static void read_group_process(struct DotCommand *cmd, struct ExecContext *context)
+{
+    if (cmd->arg1 >= GROUPS_COUNT)
+    {
+        ERRORLOG("Invalid group:%d !", cmd->arg1);
+        return;
+    }
+    context->item = gameadd.script.groups[cmd->arg1];
+}
+
+TbBool make_read_group(struct ParserContext *context)
+{
+    DOT_ALLOC
+    add_to_condition_sublist(context, cmd_idx);
+
+    cmd->command_fn = 4;
+    cmd->arg1 = context->active_group->id;
+    context->construct_fn = &whine;
+
+    // Only creatures are supported for now
+    context->fn_type = CtCreature;
+    context->dot_commands = creature_list_dot_commands;
+
+    return true;
+}
+
+/// ********
 
 static void invalid_dot_process(struct DotCommand *cmd, struct ExecContext *context)
 {
@@ -379,14 +501,18 @@ const struct DotCommandDesc creature_list_dot_commands[] = {
 };
 
 const struct DotCommandDesc location_dot_commands[] = {
-        {"CREATE_EFFECT", 0, "A", loc_cmd_create_effect},
+        {"CREATE_EFFECT", 0, "Na", loc_cmd_create_effect},
         {NULL,            0, "",  0}
 };
 
+/// ********
 
 static DotProcessFn dot_process_fns[] = {
         &invalid_dot_process,
         &find_creatures_process,
+        &creature_to_loc_process,
+        &create_effect_process,
+        &read_group_process,
 };
 
 void process_dot_script(SListRecordIdx cmd_idx)
@@ -396,15 +522,22 @@ void process_dot_script(SListRecordIdx cmd_idx)
     {
         cmd_item = &gameadd.script.list_records[cmd_idx];
         struct DotCommand *cmd = &gameadd.script.dot_commands[cmd_item->dot_command];
+        struct ExecContext context = {0}; //One context per chain
 
-        if (cmd->command_index >= STATIC_SIZE(dot_process_fns))
+        for (;;cmd = &gameadd.script.dot_commands[cmd->chain_next])
         {
-            ERRORLOG("Invalid command index!");
-            continue;
-        }
-        struct ExecContext context;
+            if (cmd->command_index >= STATIC_SIZE(dot_process_fns))
+            {
+                ERRORLOG("Invalid command index!");
+                if (cmd->chain_next == 0)
+                    break;
+                continue;
+            }
 
-        DotProcessFn fn = dot_process_fns[cmd->command_fn];
-        fn(cmd, &context);
+            DotProcessFn fn = dot_process_fns[cmd->command_fn];
+            fn(cmd, &context);
+            if (cmd->chain_next == 0)
+                break;
+        }
     }
 }

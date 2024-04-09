@@ -1014,6 +1014,7 @@ static TbBool script_scan_line_dot(char *line, struct ParserContext *context)
     // Now we are going to construct chain of commands
     if (context->construct_fn)
         context->construct_fn(context);
+    context->prev_command = NULL;
     return true;
 }
 
@@ -1057,11 +1058,17 @@ TbBool script_scan_line(char *line, struct ParserContext *context)
                 return false;
             }
             context->is_assign = true;
+            context->fn_type = CtUnused;
+            context->dot_commands = main_dot_commands;
             return script_scan_line_dot(line, context);
         }
         else if (token2.type == TkDot)
         {
-            //process_field(&token, context);
+            if (context->preloaded) // There is no preloaded operations <var>.something
+                return true;
+            context->is_assign = false;
+            // Only creatures are supported for now
+            make_read_group(context);
             return script_scan_line_dot(line, context);
         }
         if (isalnum(token.start[0])) {
@@ -1198,7 +1205,7 @@ static void parse_txt_data(char *script_data, long script_len)
     g_context.preloaded = true,
     g_context.file_version = level_file_version;
     g_context.commands = (g_context.file_version > 0)? command_desc: dk1_command_desc;
-    g_context.dot_commands = main_dot_commands;
+    g_context.dot_commands = NULL;
     text_line_number = 1;
     while (buf < buf_end)
     {
@@ -1269,7 +1276,7 @@ short load_script(long lvnum)
     // Load the file
     long script_len = 1;
     char* script_data = (char*)load_single_map_file_to_buffer(lvnum, "txt", &script_len, LMFF_None);
-    g_context.dot_commands = main_dot_commands;
+    g_context.dot_commands = NULL;
     g_context.preloaded = false;
 
     if (script_data == NULL)
