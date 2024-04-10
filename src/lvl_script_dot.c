@@ -32,6 +32,15 @@ struct ExecContext {
     enum FunctionType type;
 };
 
+enum DotCmd {
+    DF_INVALID = 0,
+    DF_FIND_CREATURE,
+    DF_CREATURE_TO_LOC,
+    DF_CREATE_EFFECT,
+    DF_READ_GROUP,
+    DF_CRE_CAST_POWER,
+};
+
 typedef void (*DotProcessFn)(struct DotCommand *, struct ExecContext *);
 /// ********
 
@@ -95,13 +104,19 @@ SListRecordIdx script_list_add(SListRecordIdx idx)
         }
         ret = gameadd.script.free_list_record_num++;
     }
+    gameadd.script.list_records[ret].next_record = 0;
 
     if (idx != 0)
     {
         struct ThingListRecord *cmd = &gameadd.script.list_records[idx];
+        SListRecordIdx cnt = SLIST_RECORDS_COUNT;
         for (; cmd->next_record; cmd = &gameadd.script.list_records[cmd->next_record])
         {
-            // empty
+            if (cnt-- < 0)
+            {
+                ERRORLOG("Slist damaged!");
+                break;
+            }
         }
         cmd->next_record = ret;
     }
@@ -113,18 +128,37 @@ void script_list_free(SListRecordIdx idx)
     if (idx != 0)
     {
         struct ThingListRecord *cmd = &gameadd.script.list_records[idx];
-        if (idx == gameadd.script.free_list_record_num - 1)
+
+        SListRecordIdx prev = 0;
+        SListRecordIdx next = cmd->next_record;
+        if (next)
         {
-            gameadd.script.free_list_record_num --; //just last item
-            cmd->next_record = 0;
-            return;
+            // Reverse the list
+            while (next)
+            {
+                next = gameadd.script.list_records[idx].next_record;
+                gameadd.script.list_records[idx].next_record = prev;
+                prev = idx;
+                idx = next;
+            }
+            idx = prev;
         }
-        for (; cmd->next_record; cmd = &gameadd.script.list_records[cmd->next_record])
+        while (idx)
         {
-            // empty
+            cmd = &gameadd.script.list_records[idx];
+            next = cmd->next_record;
+            if (idx == gameadd.script.free_list_record_num - 1)
+            {
+                gameadd.script.free_list_record_num--; //just last item
+                cmd->next_record = 0;
+            }
+            else
+            {
+                cmd->next_record = gameadd.script.free_list_record_idx;
+                gameadd.script.free_list_record_idx = idx;
+            }
+            idx = next;
         }
-        cmd->next_record = gameadd.script.free_list_record_idx;
-        gameadd.script.free_list_record_idx = idx;
     }
 }
 
@@ -324,7 +358,7 @@ static TbBool make_find_creatures(struct ParserContext *context)
     cmd->active_player = context->active_player;
     cmd->location = context->location;
     cmd->model = context->creature;
-    cmd->command_fn = 1;
+    cmd->command_fn = DF_FIND_CREATURE;
     if (context->is_assign)
     {
         cmd->assign_to = context->active_group->id;
@@ -379,10 +413,50 @@ static TbBool cre_cmd_location(struct ParserContext *context, intptr_t option)
 
     //DOT_ALLOC
     //add_to_condition_sublist(cmd_idx);
-    //cmd->command_fn = 2;
+    //cmd->command_fn = DF_CREATURE_TO_LOC;
     
     // If chain is stopped here we should construct location into var (but we will whine instead)
     context->construct_fn = &whine;
+    return true;
+}
+
+/// ********
+
+static void cre_cast_power_process(struct DotCommand *cmd, struct ExecContext *context)
+{
+    SListRecordIdx idx = context->item;
+    struct ThingListRecord *item;
+    for (; idx != 0; idx = item->next_record)
+    {
+        item = &gameadd.script.list_records[idx];
+        struct Thing *thing = thing_get(item->thing);
+        if (thing->alloc_flags & TAlF_IsInLimbo)
+            continue;
+        script_use_power_on_creature(thing, (short)cmd->arg1, (short)cmd->arg2, cmd->active_player, true);
+    }
+}
+
+static TbBool cre_cast_power(struct ParserContext *context, intptr_t option)
+{
+    struct ScriptLine scline = {0};
+
+    if (!parse_args(context, &scline))
+        return false;
+    long power = get_id(power_desc, scline.tp[0]);
+    if (power == -1)
+    {
+        SCRPTERRLOG("Unknown magic, '%s'", scline.tp[0]);
+        return false;
+    }
+    DOT_ALLOC
+    add_to_condition_sublist(context, cmd_idx);
+    cmd->active_player = context->active_player;
+    cmd->model = power;
+    cmd->arg2 = scline.np[1];
+    cmd->command_fn = DF_CRE_CAST_POWER;
+
+    context->construct_fn = NULL;
+    // If chain is stopped here we should keep location
     return true;
 }
 
@@ -432,7 +506,7 @@ static TbBool loc_cmd_create_effect(struct ParserContext *context, intptr_t opti
     cmd->active_player = context->active_player;
     cmd->model = scline.np[0];
     cmd->arg2 = scline.np[1];
-    cmd->command_fn = 3;
+    cmd->command_fn = DF_CREATE_EFFECT;
     
     context->construct_fn = NULL;
     // If chain is stopped here we should keep location
@@ -456,7 +530,7 @@ TbBool make_read_group(struct ParserContext *context)
     DOT_ALLOC
     add_to_condition_sublist(context, cmd_idx);
 
-    cmd->command_fn = 4;
+    cmd->command_fn = DF_READ_GROUP;
     cmd->arg1 = context->active_group->id;
     context->construct_fn = &whine;
 
@@ -497,6 +571,7 @@ const struct DotCommandDesc player_dot_commands[] = {
 
 const struct DotCommandDesc creature_list_dot_commands[] = {
         {"LOCATION", 0, "", cre_cmd_location},
+        {"CAST_POWER", 0, "An", cre_cast_power},
         {NULL,       0, "", 0}
 };
 
@@ -513,6 +588,7 @@ static DotProcessFn dot_process_fns[] = {
         &creature_to_loc_process,
         &create_effect_process,
         &read_group_process,
+        &cre_cast_power_process,
 };
 
 void process_dot_script(SListRecordIdx cmd_idx)
