@@ -39,6 +39,7 @@ enum DotCmd {
     DF_CREATE_EFFECT,
     DF_READ_GROUP,
     DF_CRE_CAST_POWER,
+    DF_CREATE_OBJECT,
 };
 
 typedef void (*DotProcessFn)(struct DotCommand *, struct ExecContext *);
@@ -543,6 +544,65 @@ TbBool make_read_group(struct ParserContext *context)
 
 /// ********
 
+static void create_object_process(struct DotCommand *cmd, struct ExecContext *context)
+{
+    SListRecordIdx idx = context->item;
+    struct ThingListRecord *item;
+    for (; idx != 0; idx = item->next_record)
+    {
+        item = &gameadd.script.list_records[idx];
+        struct Thing *thing = thing_get(item->thing);
+        struct Coord3d pos;
+
+        set_coords_to_subtile_center(&pos, thing->mappos.x.stl.num,  thing->mappos.y.stl.num, 0);
+        pos.z.val += get_floor_height(pos.x.stl.num, pos.y.stl.num);
+        struct Thing* tng = create_object(&pos, cmd->model, game.neutral_player_num, -1);
+        if (!thing_is_invalid(tng))
+        {
+            if (thing_in_wall_at(tng, &tng->mappos))
+            {
+                move_creature_to_nearest_valid_position(tng);
+            }
+            if (thing_is_special_box(tng))
+            {
+                tng->custom_box.box_kind = cmd->arg2;
+            }
+            else if (object_is_gold_pile(tng))
+            {
+                tng->valuable.gold_stored = cmd->arg2;
+            }
+        }
+    }
+}
+
+static TbBool loc_cmd_create_object(struct ParserContext *context, intptr_t option)
+{
+    struct ScriptLine scline = {0};
+
+    if (!parse_args(context, &scline))
+        return false;
+
+    long model = get_id(object_desc, scline.tp[0]);
+    if (model == -1)
+    {
+        SCRPTERRLOG("Unknown object, '%s'", scline.tp[0]);
+        return false;
+    }
+
+    DOT_ALLOC
+    add_to_condition_sublist(context, cmd_idx);
+    cmd->active_player = context->active_player;
+    cmd->model = model;
+    cmd->arg2 = scline.np[1];
+    cmd->command_fn = DF_CREATE_OBJECT;
+
+    context->construct_fn = NULL;
+    // If chain is stopped here we should keep location
+    return true;
+}
+
+/// ********
+
 static void invalid_dot_process(struct DotCommand *cmd, struct ExecContext *context)
 {
     ERRORLOG("Invalid dot process!");
@@ -577,6 +637,7 @@ const struct DotCommandDesc creature_list_dot_commands[] = {
 
 const struct DotCommandDesc location_dot_commands[] = {
         {"CREATE_EFFECT", 0, "Na", loc_cmd_create_effect},
+        {"CREATE_OBJECT", 0, "An", loc_cmd_create_object},
         {NULL,            0, "",  0}
 };
 
@@ -589,6 +650,7 @@ static DotProcessFn dot_process_fns[] = {
         &create_effect_process,
         &read_group_process,
         &cre_cast_power_process,
+        &create_object_process,
 };
 
 void process_dot_script(SListRecordIdx cmd_idx)
