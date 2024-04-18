@@ -181,6 +181,8 @@ enum TbScriptCommands {
     Cmd_USE_POWER_ON_PLAYERS_CREATURES     = 173,
 };
 
+struct ParserContext;
+
 struct ScriptLine {
   enum TbScriptCommands command;
   long np[COMMANDDESC_ARGS_COUNT]; /**< Numeric parameters (to be changed into interpreted parameters, containing ie. in-game random) */
@@ -192,11 +194,9 @@ struct CommandDesc { // sizeof = 14 // originally was 13
   const char *textptr;
   char args[COMMANDDESC_ARGS_COUNT+1]; // originally was [8]
   unsigned char index;
-  void (*check_fn)(const struct ScriptLine *scline); // should check
+  void (*check_fn)(struct ParserContext *context, const struct ScriptLine *scline); // should check
   void (*process_fn)(struct ScriptContext *context); // called from value or from
 };
-
-struct ParserContext;
 
 struct AdvCommandDesc
 {
@@ -211,14 +211,6 @@ struct ParserThingGroup
     char                    name[COMMAND_WORD_LEN];
     int                     id;
     TbBool                  used;
-};
-
-enum FunctionType
-{
-    CtUnused = 0,
-    CtPlayer,
-    CtLocation,
-    CtCreature,
 };
 
 struct ParserContext
@@ -238,7 +230,6 @@ struct ParserContext
     TbBool player_is_set;
     TbBool location_is_set;
 
-    enum FunctionType fn_type;
     TbBool (*construct_fn) (struct ParserContext *context);
 
     TbBool preloaded;
@@ -265,6 +256,7 @@ enum TokenType {
 struct CommandToken {
     enum TokenType type;
     char *start;
+    char *bracket; // position of [
     char *end;
 };
 

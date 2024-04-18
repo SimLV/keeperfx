@@ -60,7 +60,6 @@ enum {
 #pragma pack(1)
 
 typedef int DotCommandIdx;
-typedef int DotCommandFnIdx;
 struct Condition;
 struct ScriptLine;
 struct ScriptValue;
@@ -76,6 +75,7 @@ struct ScriptContext
       struct ScriptValue *value;
       struct PartyTrigger *pr_trig;
     };
+    SListRecordIdx save_group;
 };
 
 struct TunnellerTrigger {
@@ -87,6 +87,7 @@ struct TunnellerTrigger {
   long carried_gold;
   unsigned char crtr_level;
   char party_id;
+  SListRecordIdx target_group;
 };
 
 struct PartyTrigger {
@@ -110,6 +111,7 @@ struct PartyTrigger {
       unsigned short ncopies;
       unsigned char objectv;
   };
+  SListRecordIdx target_group;
 };
 
 struct ScriptValue {
@@ -212,26 +214,6 @@ struct ThingListRecord
     };
 };
 
-struct DotCommand
-{
-    DotCommandIdx chain_next; // next DotCommand (will be processed same turn)
-    DotCommandFnIdx command_fn;  // command function
-
-    unsigned char command_index; // from `enum TbScriptCommands` if any
-    union
-    {
-        ThingModel model;
-        long arg1;
-    };
-    union {
-        TbMapLocation location;
-        long arg2;
-    };
-    PlayerNumber active_player;
-
-    int assign_to; // index into script.groups
-};
-
 struct LevelScript {
     struct TunnellerTrigger tunneller_triggers[TUNNELLER_TRIGGERS_COUNT];
     unsigned long tunneller_triggers_num;
@@ -247,9 +229,6 @@ struct LevelScript {
     unsigned long win_conditions_num;
     unsigned short lose_conditions[WIN_CONDITIONS_COUNT];
     unsigned long lose_conditions_num;
-    struct DotCommand dot_commands[DOT_COMMANDS_COUNT];
-    unsigned long dot_commands_num;
-    DotCommandIdx free_dot_command;
 
 
     // Store strings used at level here
@@ -266,6 +245,19 @@ extern unsigned char next_command_reusable;
 
 #pragma pack()
 
+#define SCRIPT_LIST_ADD(dst) \
+    SCRIPT_LIST_ADD__(dst, temp_var ## __LINE__ )
+
+#define SCRIPT_LIST_ADD__(dst, tmp_var) \
+    SListRecordIdx tmp_var; \
+    (tmp_var) = script_list_add(dst); \
+    if ((dst) == 0)  (dst) = tmp_var;       \
+    (&gameadd.script.list_records[tmp_var])
+
+extern SListRecordIdx script_list_add(SListRecordIdx idx);
+struct ThingListRecord *script_list_pop(SListRecordIdx *idx);
+void script_list_free(SListRecordIdx idx);
+
 /******************************************************************************/
 #include "lvl_script_lib.h" // For struct ParserContext
 /******************************************************************************/
@@ -278,12 +270,13 @@ TbBool script_scan_line(char *line, struct ParserContext *context);
 TbBool preload_script(long lvnum);
 /******************************************************************************/
 
-void level_version_check(const struct ScriptLine* scline);
+void level_version_check(struct ParserContext *context, const struct ScriptLine* scline);
 long get_condition_value(PlayerNumber plyr_idx, unsigned char valtype, unsigned char a3);
 void process_level_script(void);
 
 TbBool make_read_group(struct ParserContext *context);
 void process_dot_script(SListRecordIdx cmd);
+void script_add_creature_to_result(struct ScriptContext *context, struct Thing *thing);
 /******************************************************************************/
 #ifdef __cplusplus
 }

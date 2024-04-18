@@ -27,12 +27,6 @@
 #include "thing_navigate.h"
 #include "post_inc.h"
 
-struct ExecContext
-{
-    SListRecordIdx item;
-    enum FunctionType type;
-};
-
 enum DotCmd
 {
     DF_INVALID = 0,
@@ -44,17 +38,7 @@ enum DotCmd
     DF_CREATE_OBJECT,
 };
 
-typedef void (*DotProcessFn)(struct DotCommand *, struct ExecContext *);
 /// ********
-
-#define SCRIPT_LIST_ADD(dst) \
-    SCRIPT_LIST_ADD__(dst, temp_var ## __LINE__ )
-
-#define SCRIPT_LIST_ADD__(dst, tmp_var) \
-    SListRecordIdx tmp_var; \
-    (tmp_var) = script_list_add(dst); \
-    if ((dst) == 0)  (dst) = tmp_var;       \
-    (&gameadd.script.list_records[tmp_var])
 
 SListRecordIdx script_list_add(SListRecordIdx idx)
 {
@@ -158,74 +142,11 @@ struct ThingListRecord *script_list_pop(SListRecordIdx *idx)
     return nxt;
 }
 
-struct DotCommand *dot_last(DotCommandIdx idx)
+/// ********
+
+void script_add_creature_to_result(struct ScriptContext *context, struct Thing *thing)
 {
-    static struct DotCommand bad;
-    struct DotCommand *cmd = &gameadd.script.dot_commands[idx];
-    if ((cmd == NULL) || (idx == 0))
-        return &bad;
-    for (; cmd->chain_next; cmd = &gameadd.script.dot_commands[cmd->chain_next])
-    {
-        // empty
-    }
-    return cmd;
-}
-
-#define DOT_ALLOC \
-    DotCommandIdx cmd_idx = dot_alloc_(); \
-    struct DotCommand *cmd = &gameadd.script.dot_commands[cmd_idx];
-
-static DotCommandIdx dot_alloc_()
-{// Allocating
-    DotCommandIdx idx = gameadd.script.free_dot_command;
-    struct DotCommand *cmd = &gameadd.script.dot_commands[idx];
-    if (gameadd.script.free_dot_command == 0)
-    {
-        if (gameadd.script.dot_commands_num >= DOT_COMMANDS_COUNT)
-        {
-            SCRPTERRLOG("Too many dot commands!");
-            return 0;
-        }
-        idx = gameadd.script.dot_commands_num;
-        gameadd.script.dot_commands_num++;
-        cmd = &gameadd.script.dot_commands[idx];
-    }
-    else
-    {
-        gameadd.script.free_dot_command = cmd->chain_next;
-    }
-    cmd->chain_next = 0;
-    return idx;
-}
-
-void add_to_condition_sublist(struct ParserContext *context, DotCommandIdx cmd_idx)
-{
-    // add to condition if any
-    if (context->prev_command != 0)
-    {
-        context->prev_command->chain_next = cmd_idx;
-        return;
-    }
-    int condition = get_script_current_condition();
-    if (condition == CONDITION_ALWAYS)
-    {
-        //TODO: what if next_command_reusable != 0
-    }
-    else
-    {
-        struct Condition *condt = &gameadd.script.conditions[condition];
-        SCRIPT_LIST_ADD(condt->dotlist_to_activate)->dot_command = cmd_idx;
-    }
-    context->prev_command = &gameadd.script.dot_commands[cmd_idx];
-}
-
-void dot_finalize(struct DotCommand *cmd)
-{
-    int condition = get_script_current_condition();
-    if (condition == CONDITION_ALWAYS)
-    {
-        // TODO: activate & move to free
-    }
+    SCRIPT_LIST_ADD(context->save_group)->thing = thing->index;
 }
 
 /// ********
@@ -242,11 +163,6 @@ static TbBool cmd_random(struct ParserContext *context, intptr_t option)
 
 /// ********
 
-static void invalid_dot_process(struct DotCommand *cmd, struct ExecContext *context)
-{
-    ERRORLOG("Invalid dot process!");
-}
-
 const struct AdvCommandDesc advanced_subcommands[] = {
         {"RANDOM", 0, "Aaaaaa", cmd_random},
         {NULL,     0, "",       0}
@@ -254,34 +170,6 @@ const struct AdvCommandDesc advanced_subcommands[] = {
 
 /// ********
 
-static DotProcessFn dot_process_fns[] = {
-        &invalid_dot_process,
-
-};
-
 void process_dot_script(SListRecordIdx cmd_idx)
 {
-    struct ThingListRecord *cmd_item;
-    for (; cmd_idx != 0; cmd_idx = cmd_item->next_record)
-    {
-        cmd_item = &gameadd.script.list_records[cmd_idx];
-        struct DotCommand *cmd = &gameadd.script.dot_commands[cmd_item->dot_command];
-        struct ExecContext context = {0}; //One context per chain
-
-        for (;; cmd = &gameadd.script.dot_commands[cmd->chain_next])
-        {
-            if (cmd->command_index >= STATIC_SIZE(dot_process_fns))
-            {
-                ERRORLOG("Invalid command index!");
-                if (cmd->chain_next == 0)
-                    break;
-                continue;
-            }
-
-            DotProcessFn fn = dot_process_fns[cmd->command_fn];
-            fn(cmd, &context);
-            if (cmd->chain_next == 0)
-                break;
-        }
-    }
 }

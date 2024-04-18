@@ -79,6 +79,7 @@ struct Party {
 
 #pragma pack()
 /******************************************************************************/
+struct ScriptContext;
 /******************************************************************************/
 struct Thing *get_highest_experience_and_score_creature_in_group(struct Thing *grptng);
 struct Thing* get_best_creature_to_lead_group(struct Thing* grptng);
@@ -104,8 +105,8 @@ TbBool delete_member_from_party(int party_id, long crtr_model, long crtr_level);
 long process_obey_leader(struct Thing *thing);
 void leader_find_positions_for_followers(struct Thing *leadtng);
 
-struct Thing *script_process_new_party(struct Party *party, PlayerNumber plyr_idx, TbMapLocation location, long copies_num);
-void script_process_new_tunneller_party(PlayerNumber plyr_idx, long prty_id, TbMapLocation location, TbMapLocation heading, unsigned char crtr_level, unsigned long carried_gold);
+struct Thing *script_process_new_party(struct ScriptContext *context, struct Party *party, PlayerNumber plyr_idx, TbMapLocation location, long copies_num);
+void script_process_new_tunneller_party(struct ScriptContext *context, PlayerNumber plyr_idx, long prty_id, TbMapLocation location, TbMapLocation heading, unsigned char crtr_level, unsigned long carried_gold);
 /******************************************************************************/
 #ifdef __cplusplus
 }

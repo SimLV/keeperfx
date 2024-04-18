@@ -719,7 +719,7 @@ TbBool parse_get_varib(const char *varib_name, long *varib_id, long *varib_type)
     return true;
 }
 
-static void add_to_party_check(const struct ScriptLine *scline)
+static void add_to_party_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     int party_id = get_party_index_of_name(scline->tp[0]);
     if (party_id < 0)
@@ -766,7 +766,7 @@ static void add_to_party_check(const struct ScriptLine *scline)
     }
 }
 
-static void delete_from_party_check(const struct ScriptLine *scline)
+static void delete_from_party_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     int party_id = get_party_index_of_name(scline->tp[0]);
     if (party_id < 0)
@@ -797,7 +797,7 @@ static void delete_from_party_check(const struct ScriptLine *scline)
     }
 }
 
-static void display_objective_check(const struct ScriptLine *scline)
+static void display_objective_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
   long msg_num = scline->np[0];
   long x, y;
@@ -835,7 +835,7 @@ static void display_objective_process(struct ScriptContext *context)
     }
 }
 
-static void conceal_map_rect_check(const struct ScriptLine *scline)
+static void conceal_map_rect_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     TbBool conceal_all = 0;
@@ -939,12 +939,12 @@ static void special_transfer_creature_process(struct ScriptContext* context)
     }
 }
 
-static void special_transfer_creature_check(const struct ScriptLine* scline)
+static void special_transfer_creature_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     command_add_value(Cmd_USE_SPECIAL_TRANSFER_CREATURE, scline->np[0],0,0,0);
 }
 
-static void script_transfer_creature_check(const struct ScriptLine* scline)
+static void script_transfer_creature_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     long crtr_id = parse_creature_name(scline->tp[1]);
     long count = scline->np[3];
@@ -982,7 +982,7 @@ static void script_transfer_creature_process(struct ScriptContext* context)
     }
 }
 
-static void change_creatures_annoyance_check(const struct ScriptLine* scline)
+static void change_creatures_annoyance_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     long crtr_id = parse_creature_name(scline->tp[1]);
     if (crtr_id == CREATURE_NONE)
@@ -1007,7 +1007,7 @@ static void change_creatures_annoyance_process(struct ScriptContext* context)
     }
 }
 
-static void set_trap_configuration_check(const struct ScriptLine* scline)
+static void set_trap_configuration_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
 
@@ -1108,7 +1108,7 @@ static void set_trap_configuration_check(const struct ScriptLine* scline)
     PROCESS_SCRIPT_VALUE(scline->command);
 }
 
-static void set_room_configuration_check(const struct ScriptLine* scline)
+static void set_room_configuration_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
 
@@ -1334,7 +1334,7 @@ static void set_room_configuration_check(const struct ScriptLine* scline)
     PROCESS_SCRIPT_VALUE(scline->command);
 }
 
-static void set_hand_rule_check(const struct ScriptLine* scline)
+static void set_hand_rule_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, scline->np[0]);
 
@@ -1394,7 +1394,7 @@ static void set_hand_rule_check(const struct ScriptLine* scline)
     PROCESS_SCRIPT_VALUE(scline->command);
 }
 
-static void move_creature_check(const struct ScriptLine* scline)
+static void move_creature_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, scline->np[0]);
 
@@ -1455,7 +1455,7 @@ static void move_creature_check(const struct ScriptLine* scline)
     PROCESS_SCRIPT_VALUE(scline->command);
 }
 
-static void count_creatures_at_action_point_check(const struct ScriptLine* scline)
+static void count_creatures_at_action_point_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, scline->np[1]);
 
@@ -1485,7 +1485,7 @@ static void count_creatures_at_action_point_check(const struct ScriptLine* sclin
     PROCESS_SCRIPT_VALUE(scline->command);
 }
 
-static void new_creature_type_check(const struct ScriptLine* scline)
+static void new_creature_type_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     if (game.conf.crtr_conf.model_count >= CREATURE_TYPES_MAX)
     {
@@ -1509,7 +1509,7 @@ static void new_creature_type_check(const struct ScriptLine* scline)
     }
 }
 
-static void new_room_type_check(const struct ScriptLine* scline)
+static void new_room_type_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     if (game.conf.slab_conf.room_types_count >= TERRAIN_ITEMS_MAX - 1)
     {
@@ -1544,7 +1544,7 @@ static void new_room_type_check(const struct ScriptLine* scline)
     room_desc[i].num = i;
 }
 
-static void new_object_type_check(const struct ScriptLine* scline)
+static void new_object_type_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     if (game.conf.object_conf.object_types_count >= OBJECT_TYPES_MAX-1)
     {
@@ -1567,7 +1567,7 @@ static void new_object_type_check(const struct ScriptLine* scline)
     object_desc[tmodel].num = tmodel;
 }
 
-static void new_trap_type_check(const struct ScriptLine* scline)
+static void new_trap_type_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     if (game.conf.trapdoor_conf.trap_types_count >= TRAPDOOR_TYPES_MAX)
     {
@@ -2079,7 +2079,7 @@ static void count_creatures_at_action_point_process(struct ScriptContext* contex
     set_variable(flag_player_id, flag_type, flag_id, sum);
 }
 
-static void set_door_configuration_check(const struct ScriptLine* scline)
+static void set_door_configuration_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
 
@@ -2326,7 +2326,7 @@ static void create_effect_process(struct ScriptContext *context)
     }
 }
 
-static void set_heart_health_check(const struct ScriptLine *scline)
+static void set_heart_health_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     value->arg0 = scline->np[0];
@@ -2353,7 +2353,7 @@ static void set_heart_health_process(struct ScriptContext *context)
     }
 }
 
-static void add_heart_health_check(const struct ScriptLine *scline)
+static void add_heart_health_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     value->arg0 = scline->np[0];
@@ -2391,7 +2391,7 @@ static void add_heart_health_process(struct ScriptContext *context)
     }
 }
 
-static void heart_lost_quick_objective_check(const struct ScriptLine *scline)
+static void heart_lost_quick_objective_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     if ((scline->np[0] < 0) || (scline->np[0] >= QUICK_MESSAGES_COUNT))
@@ -2428,7 +2428,7 @@ static void heart_lost_quick_objective_process(struct ScriptContext *context)
     gameadd.heart_lost_message_target = context->value->arg2;
 }
 
-static void heart_lost_objective_check(const struct ScriptLine *scline)
+static void heart_lost_objective_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     value->arg0 = scline->np[0];
@@ -2449,7 +2449,7 @@ static void heart_lost_objective_process(struct ScriptContext *context)
     gameadd.heart_lost_message_target = context->value->arg1;
 }
 
-static void set_door_check(const struct ScriptLine* scline)
+static void set_door_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     long doorAction = get_id(set_door_desc, scline->tp[0]);
@@ -2488,7 +2488,7 @@ static void set_door_process(struct ScriptContext* context)
     }
 }
 
-static void create_effects_line_check(const struct ScriptLine *scline)
+static void create_effects_line_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
 
@@ -2562,7 +2562,7 @@ static void create_effects_line_process(struct ScriptContext *context)
     fx_line->partial_steps = FX_LINE_TIME_PARTS;
 }
 
-static void set_object_configuration_check(const struct ScriptLine *scline)
+static void set_object_configuration_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     const char *objectname = scline->tp[0];
@@ -2663,7 +2663,7 @@ static void set_object_configuration_check(const struct ScriptLine *scline)
     PROCESS_SCRIPT_VALUE(scline->command);
 }
 
-static void set_creature_configuration_check(const struct ScriptLine* scline)
+static void set_creature_configuration_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
 
@@ -3021,7 +3021,7 @@ static void set_object_configuration_process(struct ScriptContext *context)
     update_all_object_stats();
 }
 
-static void display_timer_check(const struct ScriptLine *scline)
+static void display_timer_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     const char *timrname = scline->tp[1];
     char timr_id = get_rid(timer_desc, timrname);
@@ -3047,7 +3047,7 @@ static void display_timer_process(struct ScriptContext *context)
     game.flags_gui |= GGUI_ScriptTimer;
 }
 
-static void add_to_timer_check(const struct ScriptLine *scline)
+static void add_to_timer_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     const char *timrname = scline->tp[1];
     long timr_id = get_rid(timer_desc, timrname);
@@ -3068,7 +3068,7 @@ static void add_to_timer_process(struct ScriptContext *context)
    add_to_script_timer(context->value->arg0, context->value->arg1, context->value->arg2);
 }
 
-static void add_bonus_time_check(const struct ScriptLine *scline)
+static void add_bonus_time_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     value->arg0 = scline->np[0];
@@ -3080,7 +3080,7 @@ static void add_bonus_time_process(struct ScriptContext *context)
    game.bonus_time += context->value->arg0;
 }
 
-static void display_variable_check(const struct ScriptLine *scline)
+static void display_variable_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     long varib_id, varib_type;
     if (!parse_get_varib(scline->tp[1], &varib_id, &varib_type))
@@ -3107,7 +3107,7 @@ static void display_variable_process(struct ScriptContext *context)
    game.flags_gui |= GGUI_Variable;
 }
 
-static void display_countdown_check(const struct ScriptLine *scline)
+static void display_countdown_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     if (scline->np[2] <= 0)
     {
@@ -3129,7 +3129,7 @@ static void display_countdown_check(const struct ScriptLine *scline)
     PROCESS_SCRIPT_VALUE(scline->command);
 }
 
-static void cmd_no_param_check(const struct ScriptLine *scline)
+static void cmd_no_param_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     PROCESS_SCRIPT_VALUE(scline->command);
@@ -3145,7 +3145,7 @@ static void hide_variable_process(struct ScriptContext *context)
    game.flags_gui &= ~GGUI_Variable;
 }
 
-static void create_effect_check(const struct ScriptLine *scline)
+static void create_effect_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     TbMapLocation location;
@@ -3171,7 +3171,7 @@ static void create_effect_check(const struct ScriptLine *scline)
     PROCESS_SCRIPT_VALUE(scline->command);
 }
 
-static void create_effect_at_pos_check(const struct ScriptLine *scline)
+static void create_effect_at_pos_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     const char *effect_name = scline->tp[0];
@@ -3197,7 +3197,7 @@ static void null_process(struct ScriptContext *context)
 {
 }
 
-static void set_sacrifice_recipe_check(const struct ScriptLine *scline)
+static void set_sacrifice_recipe_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
 
@@ -3249,7 +3249,7 @@ static void set_sacrifice_recipe_check(const struct ScriptLine *scline)
     PROCESS_SCRIPT_VALUE(scline->command);
 }
 
-static void remove_sacrifice_recipe_check(const struct ScriptLine *scline)
+static void remove_sacrifice_recipe_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
 
@@ -3324,7 +3324,7 @@ static void set_sacrifice_recipe_process(struct ScriptContext *context)
     }
 }
 
-static void set_box_tooltip(const struct ScriptLine *scline)
+static void set_box_tooltip(struct ParserContext *context, const struct ScriptLine *scline)
 {
   if ((scline->np[0] < 0) || (scline->np[0] >= CUSTOM_BOX_COUNT))
   {
@@ -3343,7 +3343,7 @@ static void set_box_tooltip(const struct ScriptLine *scline)
   snprintf(gameadd.box_tooltip[idx], MESSAGE_TEXT_LEN, "%s", scline->tp[1]);
 }
 
-static void set_box_tooltip_id(const struct ScriptLine *scline)
+static void set_box_tooltip_id(struct ParserContext *context, const struct ScriptLine *scline)
 {
   if ((scline->np[0] < 0) || (scline->np[0] >= CUSTOM_BOX_COUNT))
   {
@@ -3354,7 +3354,7 @@ static void set_box_tooltip_id(const struct ScriptLine *scline)
   snprintf(gameadd.box_tooltip[idx], MESSAGE_TEXT_LEN, "%s", get_string(scline->np[1]));
 }
 
-static void change_slab_owner_check(const struct ScriptLine *scline)
+static void change_slab_owner_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
 
     if (scline->np[0] < 0 || scline->np[0] > gameadd.map_tiles_x) //x coord
@@ -3393,7 +3393,7 @@ static void change_slab_owner_process(struct ScriptContext *context)
     }
 }
 
-static void change_slab_type_check(const struct ScriptLine *scline)
+static void change_slab_type_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
 
@@ -3456,7 +3456,7 @@ static void change_slab_type_process(struct ScriptContext *context)
     }
 }
 
-static void reveal_map_location_check(const struct ScriptLine *scline)
+static void reveal_map_location_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     TbMapLocation location;
     if (!get_map_location_id(scline->tp[1], &location)) {
@@ -3487,7 +3487,7 @@ static void reveal_map_location_process(struct ScriptContext *context)
         reveal_map_area(context->player_idx, x-(r>>1), x+(r>>1)+(r&1), y-(r>>1), y+(r>>1)+(r&1));
 }
 
-static void level_up_players_creatures_check(const struct ScriptLine* scline)
+static void level_up_players_creatures_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, scline->np[0]);
     long crmodel = parse_creature_name(scline->tp[1]);
@@ -3565,7 +3565,7 @@ static void level_up_players_creatures_process(struct ScriptContext* context)
     SYNCDBG(19, "Finished");
 }
 
-static void use_spell_on_players_creatures_check(const struct ScriptLine* scline)
+static void use_spell_on_players_creatures_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, scline->np[0]);
     long crtr_id = parse_creature_name(scline->tp[1]);
@@ -3621,7 +3621,7 @@ static void use_spell_on_players_creatures_process(struct ScriptContext* context
     }
 }
 
-static void use_power_on_players_creatures_check(const struct ScriptLine* scline)
+static void use_power_on_players_creatures_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, scline->np[0]);
     long crtr_id = parse_creature_name(scline->tp[1]);
@@ -3748,7 +3748,7 @@ static void use_power_on_players_creatures_process(struct ScriptContext* context
     }
 }
 
-static void set_creature_instance_check(const struct ScriptLine *scline)
+static void set_creature_instance_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     value->bytes[0] = scline->np[0];
@@ -3798,7 +3798,7 @@ static void set_creature_instance_process(struct ScriptContext *context)
 }
 
 
-static void hide_hero_gate_check(const struct ScriptLine* scline)
+static void hide_hero_gate_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     short n = scline->np[0];
@@ -3835,7 +3835,7 @@ static void hide_hero_gate_process(struct ScriptContext* context)
     }
 }
 
-static void if_check(const struct ScriptLine *scline)
+static void if_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
 
     long plr_range_id = scline->np[0];
@@ -3931,7 +3931,7 @@ static void if_check(const struct ScriptLine *scline)
     }
 }
 
-static void if_available_check(const struct ScriptLine *scline)
+static void if_available_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     
     long plr_range_id = scline->np[0];
@@ -4037,7 +4037,7 @@ static void if_available_check(const struct ScriptLine *scline)
     }
 }
 
-static void if_controls_check(const struct ScriptLine *scline)
+static void if_controls_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
 
     long plr_range_id = scline->np[0];
@@ -4139,7 +4139,7 @@ static void if_controls_check(const struct ScriptLine *scline)
     }
 }
 
-static void if_allied_check(const struct ScriptLine *scline)
+static void if_allied_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     long pA = scline->np[0];
     long pB = scline->np[1];
@@ -4155,7 +4155,7 @@ static void if_allied_check(const struct ScriptLine *scline)
     command_add_condition(pA, op, SVar_ALLIED_PLAYER, pB, val);
 }
 
-static void set_texture_check(const struct ScriptLine *scline)
+static void set_texture_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, scline->np[0]);
 
@@ -4208,7 +4208,7 @@ static void set_texture_process(struct ScriptContext *context)
     }
 }
 
-static void set_music_check(const struct ScriptLine *scline)
+static void set_music_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     if (parameter_is_number(scline->tp[0]))
@@ -4310,7 +4310,7 @@ static void set_music_process(struct ScriptContext *context)
     }
 }
 
-static void play_message_check(const struct ScriptLine *scline)
+static void play_message_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     long msgtype_id = get_id(msgtype_desc, scline->tp[1]);
@@ -4418,7 +4418,7 @@ static void play_message_process(struct ScriptContext *context)
     }
 }
 
-static void set_power_hand_check(const struct ScriptLine *scline)
+static void set_power_hand_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, scline->np[0]);
 
@@ -4450,7 +4450,7 @@ static void set_power_hand_process(struct ScriptContext *context)
     }
 }
 
-static void add_effectgen_to_level_check(const struct ScriptLine* scline)
+static void add_effectgen_to_level_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
 
@@ -4518,7 +4518,7 @@ static void add_effectgen_to_level_process(struct ScriptContext* context)
     }
 }
 
-static void set_effectgen_configuration_check(const struct ScriptLine* scline)
+static void set_effectgen_configuration_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     const char* effgenname = scline->tp[0];
@@ -4640,7 +4640,7 @@ static void set_effectgen_configuration_process(struct ScriptContext* context)
     }
 }
 
-static void set_power_configuration_check(const struct ScriptLine *scline)
+static void set_power_configuration_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     const char *powername = scline->tp[0];
@@ -4932,7 +4932,7 @@ static void set_power_configuration_process(struct ScriptContext *context)
     update_powers_tab_to_config();
 }
 
-static void set_player_color_check(const struct ScriptLine *scline)
+static void set_player_color_check(struct ParserContext *context, const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, scline->np[0]);
 
@@ -4993,7 +4993,7 @@ static void set_player_color_process(struct ScriptContext *context)
     }  
 }
 
-static void set_game_rule_check(const struct ScriptLine* scline)
+static void set_game_rule_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
 
@@ -5090,7 +5090,7 @@ static void set_game_rule_process(struct ScriptContext* context)
     }
 }
 
-static void set_increase_on_experience_check(const struct ScriptLine* scline)
+static void set_increase_on_experience_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     long onexpdesc = get_id(on_experience_desc, scline->tp[0]);
@@ -5177,7 +5177,7 @@ static void set_increase_on_experience_process(struct ScriptContext* context)
     }
 }
 
-static void set_player_modifier_check(const struct ScriptLine* scline)
+static void set_player_modifier_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, scline->np[0]);
     short mdfrdesc = get_id(modifier_desc, scline->tp[1]);
@@ -5262,7 +5262,7 @@ static void set_player_modifier_process(struct ScriptContext* context)
     }
 }
 
-static void add_to_player_modifier_check(const struct ScriptLine* scline)
+static void add_to_player_modifier_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, scline->np[0]);
     short mdfrdesc = get_id(modifier_desc, scline->tp[1]);
@@ -5385,7 +5385,7 @@ static void add_to_player_modifier_process(struct ScriptContext* context)
     }
 }
 
-static void set_creature_max_level_check(const struct ScriptLine* scline)
+static void set_creature_max_level_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, scline->np[0]);
     short crtr_id = parse_creature_name(scline->tp[1]);
@@ -5454,7 +5454,7 @@ static void set_creature_max_level_process(struct ScriptContext* context)
     }
 }
 
-static void reset_action_point_check(const struct ScriptLine* scline)
+static void reset_action_point_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     long apt_idx = action_point_number_to_index(scline->np[0]);
@@ -5481,7 +5481,7 @@ static void reset_action_point_process(struct ScriptContext* context)
     action_point_reset_idx(context->value->arg0, context->value->chars[4]);
 }
 
-static void quick_message_check(const struct ScriptLine* scline)
+static void quick_message_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     if ((scline->np[0] < 0) || (scline->np[0] >= QUICK_MESSAGES_COUNT))
@@ -5509,7 +5509,7 @@ static void quick_message_process(struct ScriptContext* context)
     message_add_fmt(context->value->chars[5], context->value->chars[4], "%s", gameadd.quick_messages[context->value->uarg0]);
 }
 
-static void display_message_check(const struct ScriptLine* scline)
+static void display_message_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
     value->uarg0 = scline->np[0];

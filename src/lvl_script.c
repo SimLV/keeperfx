@@ -18,6 +18,8 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include <math.h>
+#include <accctrl.h>
+#include <aclapi.h>
 
 #include "lvl_script.h"
 
@@ -69,11 +71,37 @@ char* get_next_token(char *data, struct CommandToken *token)
     token->start = p;
     if (isalnum(*p))
     {
-        for (;isalnum(*p) || (*p == '[') || (*p == ']') || (*p == '_'); p++)
+        token->bracket = p + 1; // bracket should not be wild or NULL
+        for (;isalnum(*p) || (*p == '_'); p++)
         {
             *p = (char)toupper(*p);
         }
-        token->type = TkCommand;
+        if (*p == ']') // SOMETHING]  -> invalid
+        {
+            token->type = TkInvalid;
+        }
+        else if (*p == '[')
+        {
+            token->bracket = p;
+            p++;
+            for (;isalnum(*p) || (*p == '_'); p++)
+            {
+                *p = (char)toupper(*p);
+            }
+            if (*p == ']')
+            {
+                token->type = TkCommand;
+                p++;
+            }
+            else
+            {
+                token->type = TkInvalid; // SOME[NO_CLOSING
+            }
+        }
+        else
+        {
+            token->type = TkCommand;
+        }
     }
     else if (*p == '-') // Either operator or digit
     {
@@ -240,13 +268,15 @@ static struct CommandDesc const *find_command_desc(const struct CommandToken *to
 
 static struct ParserThingGroup *find_group_name(struct CommandToken *token, struct ParserContext *context)
 {
-    int token_len = token->end - token->start;
+    int name_len = token->end - token->bracket - 2; // [somename]
+    if (name_len < 0)
+        return NULL;
     for (int i = 0; i < STATIC_SIZE(context->groups); i++)
     {
         struct ParserThingGroup *group = &context->groups[i];
         if (!group->used)
             continue;
-        if ((group->name[token_len] == 0) && (strncmp(group->name, token->start, token_len) == 0))
+        if ((group->name[name_len] == 0) && (strncmp(group->name, token->bracket + 1, name_len) == 0))
         {
             return group;
         }
@@ -256,14 +286,16 @@ static struct ParserThingGroup *find_group_name(struct CommandToken *token, stru
 
 static struct ParserThingGroup *create_new_group(struct CommandToken *token, struct ParserContext *context)
 {
-    int token_len = token->end - token->start;
+    int name_len = token->end - token->bracket - 2; // [somename]
+    if (name_len < 0)
+        return NULL;
     for (int i = 1; i < STATIC_SIZE(context->groups); i++)
     {
         struct ParserThingGroup *group = &context->groups[i];
         if (!group->used)
         {
-            size_t min_len = min(token_len, sizeof(group->name) - 1);
-            strncpy(group->name, token->start, min_len);
+            size_t min_len = min(name_len, sizeof(group->name) - 1);
+            strncpy(group->name, token->bracket + 1, min_len);
             group->name[min_len] = 0;
             group->used = true;
             group->id = i;
@@ -1016,26 +1048,46 @@ TbBool script_scan_line(char *line, struct ParserContext *context)
 
     if (cmd_desc == NULL)
     {
-        context->active_group = find_group_name(&token, context);
         line = get_next_token(line, &token2);
         if (token2.type == TkAssign)
         {
+            context->active_group = find_group_name(&token, context);
             if (context->preloaded) // create groups on first pass
             {
-                create_new_group(&token, context);
-                return true;
+                if (0 == strncmp(token.start, "SAVE[", token.bracket - token.start))
+                {
+                    create_new_group(&token, context);
+                    return true;
+                }
+                else
+                {
+                    SCRPTERRLOG("Syntax error: Unexpected assignment near %15s...", token.start);
+                    return false;
+                }
             }
             else if (context->active_group == NULL)
             {
-                SCRPTERRLOG("Syntax error: Unexpected group");
+                SCRPTERRLOG("Syntax error: Unexpected group near %15s", token.start);
                 return false;
             }
             context->is_assign = true;
-            context->fn_type = CtUnused;
+
+            line = get_next_token(line, &token2);
+            if (token.type != TkCommand)
+            {
+                SCRPTERRLOG("Syntax error: Script command expected near %15s", token2.start);
+                return false;
+            }
+            cmd_desc = find_command_desc(&token2, context->commands);
+            if (cmd_desc == NULL)
+            {
+                SCRPTERRLOG("Invalid command, '%.*s' (lev ver %d)", PRINT_TOKEN(token2), context->file_version);
+                return false;
+            }
         }
         else if (isalnum(token.start[0]))
         {
-            SCRPTERRLOG("Invalid command, '%.*s' (lev ver %d)", PRINT_TOKEN(token), level_file_version);
+            SCRPTERRLOG("Invalid command, '%.*s' (lev ver %d)", PRINT_TOKEN(token), context->file_version);
             return false;
         }
     }
@@ -1043,6 +1095,11 @@ TbBool script_scan_line(char *line, struct ParserContext *context)
     // Handling comments
     if (cmd_desc->index == Cmd_REM)
     {
+        if (context->active_group)
+        {
+            SCRPTERRLOG("Asignment to a REM???");
+        }
+        context->active_group = NULL;
         return true;
     }
     struct ScriptLine* scline = (struct ScriptLine*)LbMemoryAlloc(sizeof(struct ScriptLine));
@@ -1050,6 +1107,7 @@ TbBool script_scan_line(char *line, struct ParserContext *context)
     if (scline == NULL)
     {
         SCRPTERRLOG("Can't allocate buffer to recognize line");
+        context->active_group = NULL;
         return false;
     }
     memcpy(scline->tcmnd, token.start, min((token.end - token.start), MAX_TEXT_LENGTH));
@@ -1060,6 +1118,7 @@ TbBool script_scan_line(char *line, struct ParserContext *context)
     if (script_is_preloaded_command(cmd_desc->index) != context->preloaded)
     {
         LbMemoryFree(scline);
+        context->active_group = NULL;
         return true;
     }
     int args_count;
@@ -1074,6 +1133,7 @@ TbBool script_scan_line(char *line, struct ParserContext *context)
         if (args_count < 0)
         {
             LbMemoryFree(scline);
+            context->active_group = NULL;
             return false;
         }
     }
@@ -1081,6 +1141,7 @@ TbBool script_scan_line(char *line, struct ParserContext *context)
     {
         SCRPTERRLOG("Syntax error: ( expected");
         LbMemoryFree(scline);
+        context->active_group = NULL;
         return false;
     }
     if (args_count < COMMANDDESC_ARGS_COUNT)
@@ -1090,6 +1151,7 @@ TbBool script_scan_line(char *line, struct ParserContext *context)
         {
             SCRPTERRLOG("Not enough parameters for \"%s\", got only %d", cmd_desc->textptr,(int)args_count);
             LbMemoryFree(scline);
+            context->active_group = NULL;
             return false;
         }
     }
@@ -1101,10 +1163,12 @@ TbBool script_scan_line(char *line, struct ParserContext *context)
     {
         SCRPTERRLOG("Syntax error: Unexpected end of line near %10s...", token.start);
         LbMemoryFree(scline);
+        context->active_group = NULL;
         return false;
     }
-    script_add_command(cmd_desc, scline, g_context.file_version);
+    script_add_command(context, cmd_desc, scline);
     LbMemoryFree(scline);
+    context->active_group = NULL;
     SCRIPTDBG(13,"Finished");
     return true;
 }
@@ -1113,7 +1177,6 @@ short clear_script(void)
 {
     LbMemorySet(&gameadd.script, 0, sizeof(struct LevelScript));
     gameadd.script.next_string = gameadd.script.strings;
-    gameadd.script.dot_commands_num = 1;
     gameadd.script.free_list_record_num = 1;
     set_script_current_condition(CONDITION_ALWAYS);
     text_line_number = 1;
@@ -1149,7 +1212,7 @@ static char* process_multiline_comment(char *buf, char *buf_end)
     return buf;
 }
 
-void level_version_check(const struct ScriptLine* scline)
+void level_version_check(struct ParserContext *context, const struct ScriptLine* scline)
 {
     level_file_version = scline->np[0];
     g_context.file_version = level_file_version;
@@ -1314,7 +1377,7 @@ static void add_to_party_process(struct ScriptContext *context)
     add_member_to_party(pr_trig->party_id, pr_trig->creatr_id, pr_trig->crtr_level, pr_trig->carried_gold, pr_trig->objectv, pr_trig->countdown);
 }
 
-static void process_party(struct PartyTrigger* pr_trig)
+void process_party(struct PartyTrigger* pr_trig)
 {
     struct ScriptContext context = {0};
     long n = pr_trig->creatr_id;
@@ -1340,18 +1403,27 @@ static void process_party(struct PartyTrigger* pr_trig)
         break;
     case TrgF_CREATE_PARTY:
         SYNCDBG(6, "Adding player %d party %d at location %d", (int)pr_trig->plyr_idx, (int)n, (int)pr_trig->location);
-        script_process_new_party(&gameadd.script.creature_partys[n],
+        script_process_new_party(&context, &gameadd.script.creature_partys[n],
             pr_trig->plyr_idx, pr_trig->location, pr_trig->ncopies);
         break;
     case TrgF_CREATE_CREATURE:
         SCRIPTDBG(6, "Adding creature %d", n);
-        script_process_new_creatures(pr_trig->plyr_idx, n, pr_trig->location,
+        script_process_new_creatures(&context, pr_trig->plyr_idx, n, pr_trig->location,
             pr_trig->ncopies, pr_trig->carried_gold, pr_trig->crtr_level);
         break;
     }
+    if (pr_trig->target_group)
+    {
+        script_list_free(gameadd.script.groups[pr_trig->target_group]);
+        gameadd.script.groups[pr_trig->target_group] = context.save_group;
+    }
+    else
+    {
+        script_list_free(context.save_group);
+    }
 }
 
-void process_check_new_creature_partys(void)
+void process_check_new_creature_partys()
 {
     for (long i = 0; i < gameadd.script.party_triggers_num; i++)
     {
@@ -1368,7 +1440,54 @@ void process_check_new_creature_partys(void)
     }
 }
 
-void process_check_new_tunneller_partys(void)
+void process_tunneler_party(struct TunnellerTrigger *tn_trig)
+{
+    struct ScriptContext context = {0};
+    
+        long k = tn_trig->party_id;
+        if (k > 0)
+        {
+            long n = tn_trig->plyr_idx;
+            SCRIPTDBG(6, "Adding tunneler party %d", k);
+            struct Thing* thing = script_process_new_tunneler(n, tn_trig->location, tn_trig->heading,
+                tn_trig->crtr_level, tn_trig->carried_gold);
+            script_add_creature_to_result(&context, thing);
+            if (!thing_is_invalid(thing))
+            {
+                struct Thing* grptng = script_process_new_party(&context, &gameadd.script.creature_partys[k - 1], n, tn_trig->location, 1);
+                if (!thing_is_invalid(grptng))
+                {
+                    add_creature_to_group_as_leader(thing, grptng);
+                }
+                else
+                {
+                    WARNLOG("No party created, only lone %s", thing_model_name(thing));
+                }
+            }
+        }
+        else
+        {
+            SCRIPTDBG(6, "Adding tunneler, heading %d", tn_trig->heading);
+            struct Thing *thing = script_process_new_tunneler(tn_trig->plyr_idx, tn_trig->location,
+                                                              tn_trig->heading,
+                                                              tn_trig->crtr_level, tn_trig->carried_gold);
+            script_add_creature_to_result(&context, thing);
+        }
+        if ((tn_trig->flags & TrgF_REUSABLE) == 0)
+            tn_trig->flags |= TrgF_DISABLED;
+
+    if (tn_trig->target_group)
+    {
+        script_list_free(gameadd.script.groups[tn_trig->target_group]);
+        gameadd.script.groups[tn_trig->target_group] = context.save_group;
+    }
+    else
+    {
+        script_list_free(context.save_group);
+    }
+}
+
+void process_check_new_tunneller_partys()
 {
     for (long i = 0; i < gameadd.script.tunneller_triggers_num; i++)
     {
@@ -1377,36 +1496,9 @@ void process_check_new_tunneller_partys(void)
         {
             if (is_condition_met(tn_trig->condit_idx))
             {
-                long k = tn_trig->party_id;
-                if (k > 0)
-                {
-                    long n = tn_trig->plyr_idx;
-                    SCRIPTDBG(6, "Adding tunneler party %d", k);
-                    struct Thing* thing = script_process_new_tunneler(n, tn_trig->location, tn_trig->heading,
-                        tn_trig->crtr_level, tn_trig->carried_gold);
-                    if (!thing_is_invalid(thing))
-                    {
-                        struct Thing* grptng = script_process_new_party(&gameadd.script.creature_partys[k - 1], n, tn_trig->location, 1);
-                        if (!thing_is_invalid(grptng))
-                        {
-                            add_creature_to_group_as_leader(thing, grptng);
-                        }
-                        else
-                        {
-                            WARNLOG("No party created, only lone %s", thing_model_name(thing));
-                        }
-                    }
-                }
-                else
-                {
-                    SCRIPTDBG(6, "Adding tunneler, heading %d", tn_trig->heading);
-                    script_process_new_tunneler(tn_trig->plyr_idx, tn_trig->location, tn_trig->heading,
-                        tn_trig->crtr_level, tn_trig->carried_gold);
-                }
-                if ((tn_trig->flags & TrgF_REUSABLE) == 0)
-                    tn_trig->flags |= TrgF_DISABLED;
+                process_tunneler_party(tn_trig);
             }
-      }
+        }
     }
 }
 

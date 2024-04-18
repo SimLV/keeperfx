@@ -27,7 +27,7 @@ extern "C" {
 #include "lvl_script_lib.h"
 #include "lvl_script_commands.h"
 
-void script_add_command(const struct CommandDesc *cmd_desc, const struct ScriptLine *scline, long file_version);
+void script_add_command(struct ParserContext *context, const struct CommandDesc *cmd_desc, const struct ScriptLine *scline);
 
 
 #ifdef __cplusplus

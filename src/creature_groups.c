@@ -889,7 +889,7 @@ void leader_find_positions_for_followers(struct Thing *leadtng)
  * @param copies_num Amount of copies to be spawned.
  * @return Gives leader of last party spawned.
  */
-struct Thing *script_process_new_party(struct Party *party, PlayerNumber plyr_idx, TbMapLocation location, long copies_num)
+struct Thing *script_process_new_party(struct ScriptContext *context, struct Party *party, PlayerNumber plyr_idx, TbMapLocation location, long copies_num)
 {
     struct Thing* leadtng = INVALID_THING;
     for (long i = 0; i < copies_num; i++)
@@ -903,9 +903,10 @@ struct Thing *script_process_new_party(struct Party *party, PlayerNumber plyr_id
               break;
           }
           struct PartyMember* member = &(party->members[k]);
-          struct Thing* thing = script_create_new_creature(plyr_idx, member->crtr_kind, location, member->carried_gold, member->crtr_level);
+          struct Thing* thing = script_create_new_creature(context, plyr_idx, member->crtr_kind, location, member->carried_gold, member->crtr_level);
           if (!thing_is_invalid(thing))
           {
+              script_add_creature_to_result(context, thing);
               struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
               cctrl->party_objective = member->objectv;
               cctrl->wait_to_turn = game.play_gameturn + member->countdown;
@@ -952,7 +953,7 @@ struct Thing *script_process_new_party(struct Party *party, PlayerNumber plyr_id
     return leadtng;
 }
 
-void script_process_new_tunneller_party(PlayerNumber plyr_idx, long prty_id, TbMapLocation location, TbMapLocation heading, unsigned char crtr_level, unsigned long carried_gold)
+void script_process_new_tunneller_party(struct ScriptContext *context, PlayerNumber plyr_idx, long prty_id, TbMapLocation location, TbMapLocation heading, unsigned char crtr_level, unsigned long carried_gold)
 {
     struct Thing* ldthing = script_process_new_tunneler(plyr_idx, location, heading, crtr_level, carried_gold);
     if (thing_is_invalid(ldthing))
@@ -960,7 +961,8 @@ void script_process_new_tunneller_party(PlayerNumber plyr_idx, long prty_id, TbM
         ERRORLOG("Couldn't create tunneling group leader");
         return;
     }
-    struct Thing* gpthing = script_process_new_party(&gameadd.script.creature_partys[prty_id], plyr_idx, location, 1);
+    script_add_creature_to_result(context, ldthing);
+    struct Thing* gpthing = script_process_new_party(context, &gameadd.script.creature_partys[prty_id], plyr_idx, location, 1);
     if (thing_is_invalid(gpthing))
     {
         ERRORLOG("Couldn't create creature group");
