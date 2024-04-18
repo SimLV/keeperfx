@@ -6666,6 +6666,10 @@ static void display_drawlist(void) // Draws isometric and 1st person view. Not f
                 vec_colour = item.creatureShadow->p1.S;
                 trig(&item.creatureShadow->p1, &item.creatureShadow->p2, &item.creatureShadow->p3);
                 trig(&item.creatureShadow->p1, &item.creatureShadow->p3, &item.creatureShadow->p4);
+                LbDrawLine(item.creatureShadow->p1.X, item.creatureShadow->p1.Y, item.creatureShadow->p2.X, item.creatureShadow->p2.Y, 0x7A);
+                LbDrawLine(item.creatureShadow->p2.X, item.creatureShadow->p2.Y, item.creatureShadow->p3.X, item.creatureShadow->p3.Y, 0x83); // far
+                LbDrawLine(item.creatureShadow->p3.X, item.creatureShadow->p3.Y, item.creatureShadow->p4.X, item.creatureShadow->p4.Y, 0x7A);
+                LbDrawLine(item.creatureShadow->p4.X, item.creatureShadow->p4.Y, item.creatureShadow->p1.X, item.creatureShadow->p1.Y, 0xA6); // near
                 break;
             case QK_SlabSelector: // Selection outline box for placing/digging slabs
                 draw_clipped_line(
