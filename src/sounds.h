@@ -31,6 +31,8 @@ extern "C" {
 #define FULL_LOUDNESS 256
 #define NORMAL_PITCH 100
 
+#define EXTERNAL_SOUNDS_COUNT 32
+
 /******************************************************************************/
 #pragma pack(1)
 
@@ -89,6 +91,8 @@ extern int sdl_flags;
 extern Mix_Chunk* streamed_sample;
 
 #pragma pack()
+
+extern Mix_Chunk* Ext_Sounds[EXTERNAL_SOUNDS_COUNT+1];
 
 /******************************************************************************/
 TbBool init_sound_heap_two_banks(unsigned char *heap_mem, long heap_size, char *snd_fname, char *spc_fname, long a5);

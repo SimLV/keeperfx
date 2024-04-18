@@ -20,7 +20,7 @@
 extern "C" {
 #endif
 
-
+#include "config.h"
 #include "lvl_script_lib.h"
 #include <SDL2/SDL_mixer.h>
 
@@ -45,7 +45,10 @@ extern const struct NamedCommand gui_button_group_desc[];
 extern const struct NamedCommand campaign_flag_desc[];
 extern const struct NamedCommand script_operator_desc[];
 
-extern Mix_Chunk* Ext_Sounds[EXTERNAL_SOUNDS_COUNT+1];
+extern const struct DotCommandDesc main_dot_commands[];
+extern const struct DotCommandDesc player_dot_commands[];
+extern const struct DotCommandDesc creature_list_dot_commands[];
+extern const struct DotCommandDesc location_dot_commands[];
 
 #ifdef __cplusplus
 }

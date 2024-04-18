@@ -23,6 +23,10 @@
 
 #include "globals.h"
 #include "bflib_memory.h"
+#include "creature_states_hero.h"
+#include "frontmenu_ingame_tabs.h"
+#include "game_legacy.h"
+#include "game_merge.h"
 #include "player_instances.h"
 #include "player_data.h"
 #include "player_utils.h"
@@ -44,24 +48,7 @@ extern "C" {
 unsigned char next_command_reusable;
 /******************************************************************************/
 
-enum TokenType {
-    TkInvalid = 0,
-    TkCommand,
-    TkString,
-    TkOperator,
-    TkNumber,
-    TkOpen,
-    TkClose,
-    TkComma,
-    TkEnd,
-    TkRangeOperator, // ~ operator
-};
-
-struct CommandToken {
-    enum TokenType type;
-    char *start;
-    char *end;
-};
+static struct ParserContext g_context = { 0 };
 
 char* get_next_token(char *data, struct CommandToken *token)
 {
@@ -123,7 +110,20 @@ char* get_next_token(char *data, struct CommandToken *token)
         token->type = TkString;
         return p;
     }
-    else if ( (*p == '=') || (*p == '!') || (*p == '<') || (*p == '>'))
+    else if (*p == '=')
+    {
+        p++;
+        if (*p == '=')
+        {
+            p++;
+            token->type = TkOperator;
+        }
+        else
+        {
+            token->type = TkAssign;
+        }
+    }
+    else if ((*p == '<') || (*p == '>'))
     {
         p++;
         if (*p == '=')
@@ -131,6 +131,19 @@ char* get_next_token(char *data, struct CommandToken *token)
             p++;
         }
         token->type = TkOperator;
+    }
+    else if (*p == '!')
+    {
+        p++;
+        if (*p == '=')
+        {
+            p++;
+            token->type = TkOperator;
+        }
+        else
+        {
+            token->type = TkInvalid;
+        }
     }
     else if (*p == '~')
     {
@@ -152,6 +165,11 @@ char* get_next_token(char *data, struct CommandToken *token)
         p++;
         token->type = TkComma;
     }
+    else if(*p == '.')
+    {
+        p++;
+        token->type = TkDot;
+    }
     else if (*p == 0)
     {
         token->type = TkEnd;
@@ -162,6 +180,21 @@ char* get_next_token(char *data, struct CommandToken *token)
     }
     token->end = p;
     return p;
+}
+
+static struct DotCommandDesc const *find_dot_command(const struct CommandToken *token, const struct DotCommandDesc *cmdlist_desc)
+{
+    const struct DotCommandDesc* cmnd_desc = NULL;
+    int token_len = token->end - token->start;
+    for (int i = 0; cmdlist_desc[i].text != NULL; i++)
+    {
+        if ((cmdlist_desc[i].text[token_len] == 0) && (strncmp(cmdlist_desc[i].text, token->start, token_len) == 0))
+        {
+            cmnd_desc = &cmdlist_desc[i];
+            break;
+        }
+    }
+    return cmnd_desc;
 }
 
 static struct CommandDesc const *find_command_desc(const struct CommandToken *token, const struct CommandDesc *cmdlist_desc)
@@ -178,6 +211,42 @@ static struct CommandDesc const *find_command_desc(const struct CommandToken *to
     }
     return cmnd_desc;
 }
+
+static struct ParserThingGroup *find_group_name(struct CommandToken *token, struct ParserContext *context)
+{
+    int token_len = token->end - token->start;
+    for (int i = 0; i < STATIC_SIZE(context->groups); i++)
+    {
+        struct ParserThingGroup *group = &context->groups[i];
+        if (!group->used)
+            continue;
+        if ((group->name[token_len] == 0) && (strncmp(group->name, token->start, token_len) == 0))
+        {
+            return group;
+        }
+    }
+    return NULL;
+}
+
+static struct ParserThingGroup *create_new_group(struct CommandToken *token, struct ParserContext *context)
+{
+    int token_len = token->end - token->start;
+    for (int i = 0; i < STATIC_SIZE(context->groups); i++)
+    {
+        struct ParserThingGroup *group = &context->groups[i];
+        if (!group->used)
+        {
+            size_t min_len = min(token_len, sizeof(group->name) - 1);
+            strncpy(group->name, token->start, min_len);
+            group->name[min_len] = 0;
+            group->used = true;
+            return group;
+        }
+    }
+    SCRPTERRLOG("Run out of free groups");
+    return NULL;
+}
+
 const struct CommandDesc *get_next_word(char **line, char *param, int *para_level, const struct CommandDesc *cmdlist_desc)
 {
     char chr;
@@ -582,7 +651,7 @@ TbBool script_command_param_to_text(char type_chr, struct ScriptLine *scline, in
     return true;
 }
 
-static int count_required_parameters(const char *args)
+int count_required_parameters(const char *args)
 {
     int required = 0;
     for (int i = 0; i < COMMANDDESC_ARGS_COUNT; i++)
@@ -601,8 +670,6 @@ static int count_required_parameters(const char *args)
     }
     return required;
 }
-
-static int script_recognize_params(char **line, const struct CommandDesc *cmd_desc, struct ScriptLine *scline, int *para_level, int expect_level, long file_version);
 
 static TbBool process_subfunc(char **line, struct ScriptLine *scline, const struct CommandDesc *cmd_desc, const struct CommandDesc *funcmd_desc, int *para_level, int src, int dst, long file_version)
 {
@@ -796,7 +863,7 @@ static TbBool process_subfunc(char **line, struct ScriptLine *scline, const stru
     return true;
 }
 
-static int script_recognize_params(char **line, const struct CommandDesc *cmd_desc, struct ScriptLine *scline, int *para_level, int expect_level, long file_version)
+int script_recognize_params(char **line, const struct CommandDesc *cmd_desc, struct ScriptLine *scline, int *para_level, int expect_level, long file_version)
 {
     int dst, src;
     TbBool reparse = false;
@@ -897,60 +964,132 @@ static int script_recognize_params(char **line, const struct CommandDesc *cmd_de
     return dst;
 }
 
-TbBool script_scan_line(char *line, TbBool preloaded, long file_version)
+#define EXPECT_END \
+    line = get_next_token(line, &token); \
+    if (token.type != TkEnd) \
+    { \
+        SCRPTERRLOG("Syntax error: Unexpected end of line"); \
+        return; \
+    }
+
+static TbBool script_scan_line_dot(char *line, struct ParserContext *context)
+{
+    struct CommandToken token = { 0 };
+
+    line = get_next_token(line, &token);
+    if (token.type == TkEnd)
+    {
+        SCRPTERRLOG("Syntax error: Unexpected end of line");
+        return false;
+    }
+    if (token.type != TkCommand)
+    {
+        SCRPTERRLOG("Syntax error: Script command expected");
+        return false;
+    }
+
+    const struct DotCommandDesc *cmd = find_dot_command(&token, context->dot_commands);
+    if (cmd == NULL)
+    {
+        SCRPTERRLOG("Syntax error: Invalid script command %.*s", PRINT_TOKEN(token));
+        return false;
+    }
+    context->line = line;
+    context->current_command = cmd;
+    if (!cmd->parse_fn(context, cmd->option))
+    {
+        return false;
+    }
+    line = get_next_token(context->line, &token);
+    if (token.type == TkDot)
+    {
+        return script_scan_line_dot(line, context);
+    }
+    else if (token.type != TkEnd)
+    {
+        SCRPTERRLOG("Syntax error: Unexpected end of line");
+        return false;
+    }
+    // Now we are going to construct chain of commands
+    if (context->is_assign)
+    {
+        if (context->construct_fn)
+            context->construct_fn(context);
+    }
+    return true;
+}
+
+TbBool script_scan_line(char *line, struct ParserContext *context)
 {
     const struct CommandDesc *cmd_desc;
     struct CommandToken token = { 0 };
+    struct CommandToken token2 = { 0 };
     SCRIPTDBG(12,"Starting");
-    struct ScriptLine* scline = (struct ScriptLine*)LbMemoryAlloc(sizeof(struct ScriptLine));
-    if (scline == NULL)
-    {
-      SCRPTERRLOG("Can't allocate buffer to recognize line");
-      return false;
-    }
     int para_level = 0;
-    LbMemorySet(scline, 0, sizeof(struct ScriptLine));
+
     if (next_command_reusable > 0)
         next_command_reusable--;
 
     line = get_next_token(line, &token);
     if (token.type == TkEnd)
     {
-        return false;
+        return true; // Empty line
     }
     if (token.type != TkCommand)
     {
         SCRPTERRLOG("Syntax error: Script command expected");
-        LbMemoryFree(scline);
         return false;
     }
-    memcpy(scline->tcmnd, token.start, min((token.end - token.start), MAX_TEXT_LENGTH));
-    if (file_version > 0)
-    {
-        cmd_desc = find_command_desc(&token, command_desc);
-    } else
-    {
-        cmd_desc = find_command_desc(&token, dk1_command_desc);
-    }
+    cmd_desc = find_command_desc(&token, context->commands);
+
     if (cmd_desc == NULL)
     {
-        if (isalnum(scline->tcmnd[0])) {
-          SCRPTERRLOG("Invalid command, '%s' (lev ver %d)", scline->tcmnd, file_version);
+        context->active_group = find_group_name(&token, context);
+        line = get_next_token(line, &token2);
+        if (token2.type == TkAssign)
+        {
+            if (context->preloaded) // create groups on first pass
+            {
+                create_new_group(&token, context);
+                return true;
+            }
+            else if (context->active_group == NULL)
+            {
+                SCRPTERRLOG("Syntax error: Unexpected group");
+                return false;
+            }
+            context->is_assign = true;
+            return script_scan_line_dot(line, context);;
         }
-        LbMemoryFree(scline);
+        else if (token2.type == TkDot)
+        {
+            //process_field(&token, context);
+            return script_scan_line_dot(line, context);
+        }
+        if (isalnum(token.start[0])) {
+            SCRPTERRLOG("Invalid command, '%.*s' (lev ver %d)", PRINT_TOKEN(token), level_file_version);
+        }
         return false;
     }
     SCRIPTDBG(12,"Executing command %lu",cmd_desc->index);
     // Handling comments
     if (cmd_desc->index == Cmd_REM)
     {
-        LbMemoryFree(scline);
+        return true;
+    }
+    struct ScriptLine* scline = (struct ScriptLine*)LbMemoryAlloc(sizeof(struct ScriptLine));
+
+    if (scline == NULL)
+    {
+        SCRPTERRLOG("Can't allocate buffer to recognize line");
         return false;
     }
+    memcpy(scline->tcmnd, token.start, min((token.end - token.start), MAX_TEXT_LENGTH));
+
     line = get_next_token(line, &token);
     scline->command = cmd_desc->index;
     // selecting only preloaded/not preloaded commands
-    if (script_is_preloaded_command(cmd_desc->index) != preloaded)
+    if (script_is_preloaded_command(cmd_desc->index) != context->preloaded)
     {
         LbMemoryFree(scline);
         return true;
@@ -963,7 +1102,7 @@ TbBool script_scan_line(char *line, TbBool preloaded, long file_version)
     else if (token.type == TkOpen)
     {
         // Recognizing parameters
-        args_count = script_recognize_params(&line, cmd_desc, scline, &para_level, 0, file_version);
+        args_count = script_recognize_params(&line, cmd_desc, scline, &para_level, 0, context->file_version);
         if (args_count < 0)
         {
             LbMemoryFree(scline);
@@ -996,7 +1135,7 @@ TbBool script_scan_line(char *line, TbBool preloaded, long file_version)
         LbMemoryFree(scline);
         return false;
     }
-    script_add_command(cmd_desc, scline, file_version);
+    script_add_command(cmd_desc, scline, g_context.file_version);
     LbMemoryFree(scline);
     SCRIPTDBG(13,"Finished");
     return true;
@@ -1006,6 +1145,7 @@ short clear_script(void)
 {
     LbMemorySet(&gameadd.script, 0, sizeof(struct LevelScript));
     gameadd.script.next_string = gameadd.script.strings;
+    gameadd.script.dot_commands_num = 1;
     set_script_current_condition(CONDITION_ALWAYS);
     text_line_number = 1;
     return true;
@@ -1045,11 +1185,27 @@ static char* process_multiline_comment(char *buf, char *buf_end)
     return buf;
 }
 
+void level_version_check(const struct ScriptLine* scline)
+{
+    level_file_version = scline->np[0];
+    g_context.file_version = level_file_version;
+    if (g_context.file_version > 0) // Each line because next line could be LEVEL_VERSION
+        g_context.commands = command_desc;
+    else
+        g_context.commands = dk1_command_desc;
+    SCRPTLOG("Level files version %d.", level_file_version);
+}
+
 static void parse_txt_data(char *script_data, long script_len)
 {// Process the file lines
-    text_line_number = 1;
     char* buf = script_data;
     char* buf_end = script_data + script_len;
+    memset(&g_context, 0, sizeof(g_context));
+    g_context.preloaded = true,
+    g_context.file_version = level_file_version;
+    g_context.commands = (g_context.file_version > 0)? command_desc: dk1_command_desc;
+    g_context.dot_commands = main_dot_commands;
+    text_line_number = 1;
     while (buf < buf_end)
     {
         // Check for long comment
@@ -1072,7 +1228,7 @@ static void parse_txt_data(char *script_data, long script_len)
       }
       //SCRPTLOG("Analyse");
       // Analyze the line
-      script_scan_line(buf, true, level_file_version);
+      script_scan_line(buf, &g_context);
       // Set new line start
       text_line_number++;
       buf += lnlen;
@@ -1119,6 +1275,9 @@ short load_script(long lvnum)
     // Load the file
     long script_len = 1;
     char* script_data = (char*)load_single_map_file_to_buffer(lvnum, "txt", &script_len, LMFF_None);
+    g_context.dot_commands = main_dot_commands;
+    g_context.preloaded = false;
+
     if (script_data == NULL)
       return false;
     // Process the file lines
@@ -1143,7 +1302,7 @@ short load_script(long lvnum)
           p[-1] = 0;
       }
       // Analyze the line
-      script_scan_line(buf, false, level_file_version);
+      script_scan_line(buf, &g_context);
       // Set new line start
       text_line_number++;
       buf = p;

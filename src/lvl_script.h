@@ -36,13 +36,14 @@ extern "C" {
 #define CONDITIONS_COUNT         512
 #define TUNNELLER_TRIGGERS_COUNT 256
 #define SCRIPT_VALUES_COUNT      2048
-#define WIN_CONDITIONS_COUNT      12
+#define WIN_CONDITIONS_COUNT     12
+#define DOT_COMMANDS_COUNT       256
+#define GROUPS_COUNT             8
+#define GROUP_RECORDS_COUNT      256
 
 #define CONDITION_ALWAYS (CONDITIONS_COUNT)
 
 #define SENSIBLE_GOLD 99999999
-
-#define EXTERNAL_SOUNDS_COUNT 32
 
 enum ScriptOperator {
     SOpr_SET = 1,
@@ -58,6 +59,8 @@ enum {
 /******************************************************************************/
 #pragma pack(1)
 
+typedef int DotCommandIdx;
+typedef int DotCommandFnIdx;
 struct Condition;
 struct ScriptLine;
 struct ScriptValue;
@@ -175,6 +178,7 @@ struct Condition {
   unsigned char plyr_range_right;
   unsigned char variabl_type_right;
   unsigned short variabl_idx_right;
+  DotCommandIdx dot_to_activate;
   TbBool use_second_variable;
 };
 
@@ -198,6 +202,22 @@ struct ScriptFxLine
     int step;
 };
 
+struct ThingGroupRecord
+{
+    ThingGroupRecordIdx next_record;
+    ThingIndex thing;
+};
+
+struct DotCommand
+{
+    DotCommandIdx chain_next; // next DotCommand (will be processed same turn)
+    DotCommandFnIdx command;  // command function
+
+    unsigned char command_index; // from `enum TbScriptCommands` if any
+    TbMapLocation location;
+    PlayerNumber active_player;
+};
+
 struct LevelScript {
     struct TunnellerTrigger tunneller_triggers[TUNNELLER_TRIGGERS_COUNT];
     unsigned long tunneller_triggers_num;
@@ -213,27 +233,37 @@ struct LevelScript {
     unsigned long win_conditions_num;
     unsigned short lose_conditions[WIN_CONDITIONS_COUNT];
     unsigned long lose_conditions_num;
+    struct DotCommand dot_commands[DOT_COMMANDS_COUNT];
+    unsigned long dot_commands_num;
+    DotCommandIdx free_dot_command;
+
 
     // Store strings used at level here
     char strings[2048];
     char *next_string;
+    ThingGroupRecordIdx groups[GROUPS_COUNT];
+    struct ThingGroupRecord group_records[GROUP_RECORDS_COUNT];
+    ThingGroupRecordIdx free_group_record;
 };
 
 /******************************************************************************/
 extern unsigned char next_command_reusable;
 
-
 #pragma pack()
+
+/******************************************************************************/
+#include "lvl_script_lib.h" // For struct ParserContext
 /******************************************************************************/
 
 extern const struct NamedCommand player_desc[];
 /******************************************************************************/
 short clear_script(void);
 short load_script(long lvl_num);
-TbBool script_scan_line(char *line,TbBool preloaded, long file_version);
+TbBool script_scan_line(char *line, struct ParserContext *context);
 TbBool preload_script(long lvnum);
 /******************************************************************************/
 
+void level_version_check(const struct ScriptLine* scline);
 long get_condition_value(PlayerNumber plyr_idx, unsigned char valtype, unsigned char a3);
 void process_level_script(void);
 /******************************************************************************/

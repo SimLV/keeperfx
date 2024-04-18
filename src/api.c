@@ -996,7 +996,13 @@ static void api_process_buffer(const char *buffer, size_t buf_size)
         }
 
         // Execute map command
-        if (script_scan_line(map_command, false, 99)) // Maximum level of a command support
+        struct ParserContext context = {
+                .file_version = 99,
+                .commands = command_desc,
+                .dot_commands = main_dot_commands
+        };
+
+        if (script_scan_line(map_command, &context)) // Maximum level of a command support
         {
             api_ok();
         }

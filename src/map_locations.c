@@ -379,7 +379,7 @@ TbBool get_map_location_id_f(const char *locname, TbMapLocation *location, const
       return true;
     }
     // Player name means the location of player's Dungeon Heart
-    long i = get_rid(player_desc, locname);
+    long i = get_id(player_desc, locname);
     if (i != -1)
     {
       if ((i != ALL_PLAYERS) && (i != PLAYER_NEUTRAL)) {
@@ -393,14 +393,14 @@ TbBool get_map_location_id_f(const char *locname, TbMapLocation *location, const
       return true;
     }
     // Creature name means location of such creature belonging to player0
-    i = get_rid(creature_desc, locname);
+    i = get_id(creature_desc, locname);
     if (i != -1)
     {
         *location = ((unsigned long)i << 12) | ((unsigned long)my_player_number << 4) | MLoc_CREATUREKIND;
         return true;
     }
     // Room name means location of such room belonging to player0
-    i = get_rid(room_desc, locname);
+    i = get_id(room_desc, locname);
     if (i != -1)
     {
         *location = ((unsigned long)i << 12) | ((unsigned long)my_player_number << 4) | MLoc_ROOMKIND;
@@ -485,9 +485,9 @@ TbBool get_map_location_id_f(const char *locname, TbMapLocation *location, const
             return false;
         }
         *location = (((unsigned long)n) << 4) | MLoc_HEROGATE;
-    } else
+    }
     // Positive number means Action Point
-    if (i > 0)
+    else if (i > 0)
     {
         long n = action_point_number_to_index(i);
         if (!action_point_exists_idx(n))

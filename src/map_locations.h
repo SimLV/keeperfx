@@ -28,9 +28,6 @@ extern "C" {
 #endif
 /******************************************************************************/
 
-
-typedef unsigned long TbMapLocation;
-
 enum MapLocationTypes {
     MLoc_NONE = 0,
     MLoc_ACTIONPOINT,

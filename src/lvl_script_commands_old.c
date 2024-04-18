@@ -20,6 +20,7 @@
 #include "config_strings.h"
 #include "config_magic.h"
 #include "config_terrain.h"
+#include "creature_states_hero.h"
 #include "player_instances.h"
 #include "player_data.h"
 #include "lvl_filesdk1.h"
@@ -1755,10 +1756,6 @@ void script_add_command(const struct CommandDesc *cmd_desc, const struct ScriptL
         break;
     case Cmd_CHANGE_CREATURE_OWNER:
         command_change_creature_owner(scline->np[0], scline->tp[1], scline->tp[2], scline->np[3]);
-        break;
-    case Cmd_LEVEL_VERSION:
-        level_file_version = scline->np[0];
-        SCRPTLOG("Level files version %d.",level_file_version);
         break;
     case Cmd_ADD_TO_FLAG:
         command_add_to_flag(scline->np[0], scline->tp[1], scline->np[2]);

@@ -68,6 +68,9 @@ int atmos_sound_frequency = 800;
 static char ambience_timer;
 int sdl_flags = 0;
 Mix_Chunk* streamed_sample;
+
+Mix_Chunk* Ext_Sounds[];
+
 /******************************************************************************/
 void thing_play_sample(struct Thing *thing, short smptbl_idx, unsigned short pitch, char a4, unsigned char a5, unsigned char a6, long priority, long loudness)
 {

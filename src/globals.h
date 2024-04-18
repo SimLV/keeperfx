@@ -95,6 +95,8 @@ extern "C" {
 #endif
 #endif
 
+#define STATIC_SIZE(arr) (sizeof((arr)) / sizeof((arr)[0]))
+
 // Return values for verification functions
 #define VERIF_ERROR   0
 #define VERIF_OK      1
@@ -288,6 +290,9 @@ typedef unsigned char NaviRouteFlags;
 typedef unsigned short NavColour;
 /** Either North (0), East (1), South (2), or West (3). */
 typedef signed char SmallAroundIndex;
+
+typedef int ThingGroupRecordIdx;
+typedef unsigned long TbMapLocation;
 
 /**
  * Stores a 2d coordinate (x,y).

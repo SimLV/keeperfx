@@ -27,7 +27,6 @@
 #include "bflib_sound.h"
 #include "bflib_math.h"
 
-#include "lvl_script_commands.h"
 #include "config_terrain.h"
 #include "game_merge.h"
 #include "game_legacy.h"

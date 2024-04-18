@@ -18,13 +18,8 @@
 #ifndef DK_LVLSCRIPTLIB_H
 #define DK_LVLSCRIPTLIB_H
 
-#include "creature_states_hero.h"
-#include "frontmenu_ingame_tabs.h"
-
 #include "globals.h"
 #include "bflib_math.h"
-#include "player_instances.h"
-#include "game_legacy.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -192,6 +187,7 @@ struct ScriptLine {
   char tcmnd[MAX_TEXT_LENGTH]; /**< Command text */
   char tp[COMMANDDESC_ARGS_COUNT][MAX_TEXT_LENGTH]; /**< Text parameters */
 };
+
 struct CommandDesc { // sizeof = 14 // originally was 13
   const char *textptr;
   char args[COMMANDDESC_ARGS_COUNT+1]; // originally was [8]
@@ -199,6 +195,81 @@ struct CommandDesc { // sizeof = 14 // originally was 13
   void (*check_fn)(const struct ScriptLine *scline); // should check
   void (*process_fn)(struct ScriptContext *context); // called from value or from
 };
+
+struct ParserContext;
+
+struct DotCommandDesc
+{
+    const char *text;
+    intptr_t option;
+    char args[COMMANDDESC_ARGS_COUNT + 1]; // originally was [8]
+    TbBool (*parse_fn)(struct ParserContext *context, intptr_t option);
+};
+
+struct ParserThingGroup
+{
+    char                    name[COMMAND_WORD_LEN];
+    ThingGroupRecordIdx     id;
+    TbBool                  used;
+};
+
+enum FunctionType
+{
+    CtUnused = 0,
+    CtLocation,
+    CtCreature,
+};
+
+struct ParserContext
+{
+    char *line;
+
+    struct CommandDesc const *commands;
+    long file_version;
+    struct ParserThingGroup groups[GROUPS_COUNT];
+    const struct DotCommandDesc *dot_commands;
+    struct ParserThingGroup *active_group;
+    const struct DotCommandDesc *current_command;
+
+    PlayerNumber active_player;
+    TbMapLocation location;
+
+    TbBool player_is_set;
+    TbBool location_is_set;
+
+    enum FunctionType fn_type;
+    TbBool (*construct_fn) (struct ParserContext *context);
+
+    TbBool preloaded;
+    TbBool is_assign;
+};
+
+// *******
+
+enum TokenType {
+    TkInvalid = 0,
+    TkCommand,
+    TkString,
+    TkOperator,
+    TkNumber,
+    TkOpen,
+    TkClose,
+    TkComma,
+    TkEnd,
+    TkRangeOperator, // range operator ~
+    TkAssign, // assignment operator =
+    TkDot, // dot operator .
+};
+
+struct CommandToken {
+    enum TokenType type;
+    char *start;
+    char *end;
+};
+
+#define PRINT_TOKEN(tk) (tk.end - tk.start), tk.start
+
+// *******
 
 enum ScriptVariables {
   SVar_MONEY                           =  1,
@@ -286,6 +357,9 @@ enum ScriptVariables {
 // 1/4 turn minimal
 #define FX_LINE_TIME_PARTS 4
 
+extern char* get_next_token(char *data, struct CommandToken *token);
+extern int script_recognize_params(char **line, const struct CommandDesc *cmd_desc, struct ScriptLine *scline, int *para_level, int expect_level, long file_version);
+extern int count_required_parameters(const char *args);
 
 struct Thing* script_get_creature_by_criteria(PlayerNumber plyr_idx, ThingModel crmodel, long criteria);
 ThingModel parse_creature_name(const char *creature_name);

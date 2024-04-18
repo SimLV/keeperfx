@@ -12,8 +12,9 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
-#include "lvl_script_commands.h"
 
+#include "lvl_script.h"
+#include "lvl_script_commands.h"
 #include "lvl_script_conditions.h"
 #include "lvl_script_lib.h"
 
@@ -21,6 +22,9 @@
 #include <string.h>
 
 #include "dungeon_data.h"
+#include "frontmenu_ingame_tabs.h"
+#include "game_legacy.h"
+#include "game_merge.h"
 #include "thing_data.h"
 #include "player_instances.h"
 #include "keeperfx.hpp"
@@ -37,6 +41,7 @@
 #include "thing_physics.h"
 #include "thing_navigate.h"
 #include "console_cmd.h"
+#include "creature_states_hero.h"
 #include "creature_states_pray.h"
 #include "creature_states_mood.h"
 #include "room_util.h"
@@ -484,8 +489,6 @@ const struct NamedCommand texture_pack_desc[] = {
   {"LATERITE_CAVERN",14},
   {NULL,           0},
 };
-
-Mix_Chunk* Ext_Sounds[];
 
 static int sac_compare_fn(const void *ptr_a, const void *ptr_b)
 {
@@ -3194,8 +3197,6 @@ static void null_process(struct ScriptContext *context)
 {
 }
 
-
-
 static void set_sacrifice_recipe_check(const struct ScriptLine *scline)
 {
     ALLOCATE_SCRIPT_VALUE(scline->command, 0);
@@ -5594,7 +5595,7 @@ const struct CommandDesc command_desc[] = {
   {"REVEAL_MAP_RECT",                   "PNNNN   ", Cmd_REVEAL_MAP_RECT, NULL, NULL},
   {"CONCEAL_MAP_RECT",                  "PNNNNa  ", Cmd_CONCEAL_MAP_RECT, &conceal_map_rect_check, &conceal_map_rect_process},
   {"REVEAL_MAP_LOCATION",               "PNN     ", Cmd_REVEAL_MAP_LOCATION, &reveal_map_location_check, &reveal_map_location_process},
-  {"LEVEL_VERSION",                     "N       ", Cmd_LEVEL_VERSION, NULL, NULL},
+  {"LEVEL_VERSION",                     "N       ", Cmd_LEVEL_VERSION, &level_version_check, NULL},
   {"KILL_CREATURE",                     "PC!AN   ", Cmd_KILL_CREATURE, NULL, NULL},
   {"COMPUTER_DIG_TO_LOCATION",          "PLL     ", Cmd_COMPUTER_DIG_TO_LOCATION, NULL, NULL},
   {"USE_POWER_ON_CREATURE",             "PC!APANN", Cmd_USE_POWER_ON_CREATURE, NULL, NULL},
@@ -5732,7 +5733,7 @@ const struct CommandDesc dk1_command_desc[] = {
   {"SWAP_CREATURE",                "AC      ", Cmd_SWAP_CREATURE, NULL, NULL},
   {"PRINT",                        "A       ", Cmd_PRINT, NULL, NULL},
   {"MESSAGE",                      "A       ", Cmd_MESSAGE, NULL, NULL},
-  {"LEVEL_VERSION",                "N       ", Cmd_LEVEL_VERSION, NULL, NULL},
+  {"LEVEL_VERSION",                "N       ", Cmd_LEVEL_VERSION, &level_version_check, NULL},
   {NULL,                           "        ", Cmd_NONE, NULL, NULL},
 };
 

@@ -62,8 +62,6 @@ enum GameLoadStatus {
 /******************************************************************************/
 #pragma pack(1)
 
-struct Game;
-
 enum CatalogueEntryFlags {
     CEF_InUse       = 0x0001,
 };

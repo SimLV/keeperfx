@@ -23,6 +23,7 @@
 extern "C" {
 #endif
 
+#include "lvl_script.h"
 #include "lvl_script_lib.h"
 #include "lvl_script_commands.h"
 

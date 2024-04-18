@@ -12,11 +12,18 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
+#include "lvl_script.h"
 #include "lvl_script_lib.h"
 #include "lvl_script_conditions.h"
 #include "lvl_script_commands.h"
 
+#include "creature_states_pray.h"
+#include "dungeon_data.h"
+#include "game_merge.h"
+#include "game_legacy.h"
 #include "globals.h"
+#include "magic.h"
+#include "player_instances.h"
 #include "thing_factory.h"
 #include "thing_physics.h"
 #include "thing_navigate.h"
