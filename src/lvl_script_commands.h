@@ -45,11 +45,7 @@ extern const struct NamedCommand gui_button_group_desc[];
 extern const struct NamedCommand campaign_flag_desc[];
 extern const struct NamedCommand script_operator_desc[];
 
-extern const struct DotCommandDesc main_dot_commands[];
-extern const struct DotCommandDesc player_dot_commands[];
-extern const struct DotCommandDesc creature_list_dot_commands[];
-extern const struct DotCommandDesc location_dot_commands[];
-
+extern const struct AdvCommandDesc advanced_subcommands[];
 #ifdef __cplusplus
 }
 #endif

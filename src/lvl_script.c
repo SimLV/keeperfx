@@ -165,10 +165,36 @@ char* get_next_token(char *data, struct CommandToken *token)
         p++;
         token->type = TkComma;
     }
-    else if(*p == '.')
+    else if (*p == '.')
     {
         p++;
         token->type = TkDot;
+    }
+    else if ((*p == ';') || (*p == '#'))
+    {
+        token->type = TkEnd;
+        p++;
+        while (*p != 0)
+        {
+            p++;
+        }
+    }
+    else if (*p == '/')
+    {
+        p++;
+        if (*p == '/')
+        {
+            token->type = TkEnd;
+            p++;
+            while (*p != 0)
+            {
+                p++;
+            }
+        }
+        else
+        {
+            token->type = TkInvalid;
+        }
     }
     else if (*p == 0)
     {
@@ -182,9 +208,9 @@ char* get_next_token(char *data, struct CommandToken *token)
     return p;
 }
 
-static struct DotCommandDesc const *find_dot_command(const struct CommandToken *token, const struct DotCommandDesc *cmdlist_desc)
+static struct AdvCommandDesc const *find_dot_command(const struct CommandToken *token, const struct AdvCommandDesc *cmdlist_desc)
 {
-    const struct DotCommandDesc* cmnd_desc = NULL;
+    const struct AdvCommandDesc* cmnd_desc = NULL;
     int token_len = token->end - token->start;
     for (int i = 0; cmdlist_desc[i].text != NULL; i++)
     {
@@ -965,59 +991,6 @@ int script_recognize_params(char **line, const struct CommandDesc *cmd_desc, str
     return dst;
 }
 
-#define EXPECT_END \
-    line = get_next_token(line, &token); \
-    if (token.type != TkEnd) \
-    { \
-        SCRPTERRLOG("Syntax error: Unexpected end of line"); \
-        return; \
-    }
-
-static TbBool script_scan_line_dot(char *line, struct ParserContext *context)
-{
-    struct CommandToken token = { 0 };
-
-    line = get_next_token(line, &token);
-    if (token.type == TkEnd)
-    {
-        SCRPTERRLOG("Syntax error: Unexpected end of line");
-        return false;
-    }
-    if (token.type != TkCommand)
-    {
-        SCRPTERRLOG("Syntax error: Script command expected");
-        return false;
-    }
-
-    const struct DotCommandDesc *cmd = find_dot_command(&token, context->dot_commands);
-    if (cmd == NULL)
-    {
-        SCRPTERRLOG("Syntax error: Invalid script command %.*s", PRINT_TOKEN(token));
-        return false;
-    }
-    context->line = line;
-    context->current_command = cmd;
-    if (!cmd->parse_fn(context, cmd->option))
-    {
-        return false;
-    }
-    line = get_next_token(context->line, &token);
-    if (token.type == TkDot)
-    {
-        return script_scan_line_dot(line, context);
-    }
-    else if (token.type != TkEnd)
-    {
-        SCRPTERRLOG("Syntax error: Unexpected end of line");
-        return false;
-    }
-    // Now we are going to construct chain of commands
-    if (context->construct_fn)
-        context->construct_fn(context);
-    context->prev_command = NULL;
-    return true;
-}
-
 TbBool script_scan_line(char *line, struct ParserContext *context)
 {
     const struct CommandDesc *cmd_desc;
@@ -1059,22 +1032,12 @@ TbBool script_scan_line(char *line, struct ParserContext *context)
             }
             context->is_assign = true;
             context->fn_type = CtUnused;
-            context->dot_commands = main_dot_commands;
-            return script_scan_line_dot(line, context);
         }
-        else if (token2.type == TkDot)
+        else if (isalnum(token.start[0]))
         {
-            if (context->preloaded) // There is no preloaded operations <var>.something
-                return true;
-            context->is_assign = false;
-            // Only creatures are supported for now
-            make_read_group(context);
-            return script_scan_line_dot(line, context);
-        }
-        if (isalnum(token.start[0])) {
             SCRPTERRLOG("Invalid command, '%.*s' (lev ver %d)", PRINT_TOKEN(token), level_file_version);
+            return false;
         }
-        return false;
     }
     SCRIPTDBG(12,"Executing command %lu",cmd_desc->index);
     // Handling comments
@@ -1136,7 +1099,7 @@ TbBool script_scan_line(char *line, struct ParserContext *context)
     }
     if (token.type != TkEnd)
     {
-        SCRPTERRLOG("Syntax error: Unexpected end of line");
+        SCRPTERRLOG("Syntax error: Unexpected end of line near %10s...", token.start);
         LbMemoryFree(scline);
         return false;
     }
@@ -1205,7 +1168,6 @@ static void parse_txt_data(char *script_data, long script_len)
     g_context.preloaded = true,
     g_context.file_version = level_file_version;
     g_context.commands = (g_context.file_version > 0)? command_desc: dk1_command_desc;
-    g_context.dot_commands = NULL;
     text_line_number = 1;
     while (buf < buf_end)
     {
@@ -1276,7 +1238,6 @@ short load_script(long lvnum)
     // Load the file
     long script_len = 1;
     char* script_data = (char*)load_single_map_file_to_buffer(lvnum, "txt", &script_len, LMFF_None);
-    g_context.dot_commands = NULL;
     g_context.preloaded = false;
 
     if (script_data == NULL)

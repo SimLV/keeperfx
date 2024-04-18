@@ -999,7 +999,6 @@ static void api_process_buffer(const char *buffer, size_t buf_size)
         struct ParserContext context = {
                 .file_version = 99,
                 .commands = command_desc,
-                .dot_commands = main_dot_commands
         };
 
         if (script_scan_line(map_command, &context)) // Maximum level of a command support

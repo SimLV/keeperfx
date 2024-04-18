@@ -198,7 +198,7 @@ struct CommandDesc { // sizeof = 14 // originally was 13
 
 struct ParserContext;
 
-struct DotCommandDesc
+struct AdvCommandDesc
 {
     const char *text;
     intptr_t option;
@@ -228,9 +228,7 @@ struct ParserContext
     struct CommandDesc const *commands;
     long file_version;
     struct ParserThingGroup groups[GROUPS_COUNT];
-    const struct DotCommandDesc *dot_commands; // Which commands are availiable at current context
     struct ParserThingGroup *active_group; // Variable to store or load list from/to
-    const struct DotCommandDesc *current_command;
     struct DotCommand *prev_command; // List of commands
 
     PlayerNumber active_player;
