@@ -27,6 +27,7 @@ extern "C" {
 extern const struct CommandDesc command_desc[];
 extern const struct CommandDesc dk1_command_desc[];
 extern const struct CommandDesc subfunction_desc[];
+extern const struct CommandDesc subfunction_desc2[];
 extern const struct NamedCommand player_desc[];
 //extern const struct NamedCommand variable_desc[];
 extern const struct NamedCommand controls_variable_desc[];
@@ -45,7 +46,7 @@ extern const struct NamedCommand gui_button_group_desc[];
 extern const struct NamedCommand campaign_flag_desc[];
 extern const struct NamedCommand script_operator_desc[];
 
-extern const struct AdvCommandDesc advanced_subcommands[];
+extern const struct CommandDesc advanced_subcommands[];
 #ifdef __cplusplus
 }
 #endif

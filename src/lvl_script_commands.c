@@ -61,7 +61,7 @@ extern "C" {
 #endif
 
 extern long level_file_version;
-
+extern void process_party_trigger(struct PartyTrigger* pr_trig);
 
 
 const struct CommandDesc subfunction_desc[] = {
@@ -70,6 +70,12 @@ const struct CommandDesc subfunction_desc[] = {
     {"IMPORT",                     "PA      ", Cmd_IMPORT, NULL, NULL},
     {NULL,                         "        ", Cmd_NONE, NULL, NULL},
   };
+
+const struct CommandDesc subfunction_desc2[] = {
+        {"DRAWFROM",                   "Aaaaaaaa", Cmd_DRAWFROM, NULL, NULL},
+        {"IMPORT",                     "PA      ", Cmd_IMPORT, NULL, NULL},
+        {NULL,                         "        ", Cmd_NONE, NULL, NULL},
+};
 
 const struct NamedCommand player_desc[] = {
   {"PLAYER0",          PLAYER0},
@@ -752,15 +758,16 @@ static void add_to_party_check(struct ParserContext *context, const struct Scrip
     } else
     {
         struct PartyTrigger* pr_trig = &gameadd.script.party_triggers[gameadd.script.party_triggers_num % PARTY_TRIGGERS_COUNT];
-        pr_trig->flags = TrgF_ADD_TO_PARTY;
-        pr_trig->flags |= next_command_reusable?TrgF_REUSABLE:0;
+        pr_trig->c.flags = TrgF_ADD_TO_PARTY;
+        pr_trig->c.flags |= next_command_reusable?TrgF_REUSABLE:0;
         pr_trig->party_id = party_id;
         pr_trig->creatr_id = crtr_id;
         pr_trig->crtr_level = scline->np[2];
         pr_trig->carried_gold = scline->np[3];
         pr_trig->objectv = objective_id;
         pr_trig->countdown = scline->np[5];
-        pr_trig->condit_idx = get_script_current_condition();
+        pr_trig->c.condit_idx = get_script_current_condition();
+        pr_trig->c.precommands = context->precommands;
 
         gameadd.script.party_triggers_num++;
     }
@@ -780,20 +787,28 @@ static void delete_from_party_check(struct ParserContext *context, const struct 
       SCRPTERRLOG("Unknown creature, '%s'", scline->tp[1]);
       return;
     }
+    struct PartyTrigger trig_now = { 0 };
+    struct PartyTrigger *pr_trig;
     if ((get_script_current_condition() == CONDITION_ALWAYS) && (next_command_reusable == 0))
     {
-        delete_member_from_party(party_id, creature_id, scline->np[2]);
+        pr_trig = &trig_now;
     } else
     {
-        struct PartyTrigger* pr_trig = &gameadd.script.party_triggers[gameadd.script.party_triggers_num % PARTY_TRIGGERS_COUNT];
-        pr_trig->flags = TrgF_DELETE_FROM_PARTY;
-        pr_trig->flags |= next_command_reusable?TrgF_REUSABLE:0;
+        pr_trig = &gameadd.script.party_triggers[gameadd.script.party_triggers_num %
+                                                                      PARTY_TRIGGERS_COUNT];
+        gameadd.script.party_triggers_num++;
+    }
+        pr_trig->c.flags = TrgF_DELETE_FROM_PARTY;
+        pr_trig->c.flags |= next_command_reusable?TrgF_REUSABLE:0;
         pr_trig->party_id = party_id;
         pr_trig->creatr_id = creature_id;
         pr_trig->crtr_level = scline->np[2];
-        pr_trig->condit_idx = get_script_current_condition();
+        pr_trig->c.condit_idx = get_script_current_condition();
+        pr_trig->c.precommands = context->precommands;
 
-        gameadd.script.party_triggers_num++;
+    if ((get_script_current_condition() == CONDITION_ALWAYS) && (next_command_reusable == 0))
+    {
+        process_party_trigger(pr_trig);
     }
 }
 
@@ -2043,7 +2058,7 @@ static void move_creature_process(struct ScriptContext* context)
             }
 
             struct Coord3d pos;
-            if(!get_coords_at_location(&pos,location)) {
+            if(!get_coords_at_location(&pos,location, context)) {
                 SYNCDBG(5,"No valid coords for location",(int)location);
                 return;
             }
@@ -2529,8 +2544,8 @@ static void create_effects_line_process(struct ScriptContext *context)
         ERRORLOG("Too many fx_lines");
         return;
     }
-    find_location_pos(context->value->arg0, context->player_idx, &fx_line->from, __func__);
-    find_location_pos(context->value->arg1, context->player_idx, &fx_line->to, __func__);
+    find_location_pos(context->value->arg0, context->player_idx, &fx_line->from, context, __func__);
+    find_location_pos(context->value->arg1, context->player_idx, &fx_line->to, context, __func__);
     fx_line->curvature = (int)context->value->chars[8];
     fx_line->spatial_step = context->value->bytes[9] * 32;
     fx_line->steps_per_turn = context->value->bytes[10];
@@ -4500,20 +4515,21 @@ static void add_effectgen_to_level_process(struct ScriptContext* context)
     short range = context->value->shorts[2];
     if (get_script_current_condition() == CONDITION_ALWAYS)
     {
-        script_process_new_effectgen(gen_id, location, range);
+        script_process_new_effectgen(context, gen_id, location, range);
     }
     else
     {
         struct PartyTrigger* pr_trig = &gameadd.script.party_triggers[gameadd.script.party_triggers_num % PARTY_TRIGGERS_COUNT];
-        pr_trig->flags = TrgF_CREATE_EFFECT_GENERATOR;
-        pr_trig->flags |= next_command_reusable ? TrgF_REUSABLE : 0;
+        pr_trig->c.flags = TrgF_CREATE_EFFECT_GENERATOR;
+        pr_trig->c.flags |= next_command_reusable ? TrgF_REUSABLE : 0;
         pr_trig->plyr_idx = 0; //not needed
         pr_trig->creatr_id = 0; //not needed
         pr_trig->crtr_level = gen_id;
         pr_trig->carried_gold = range;
-        pr_trig->location = location;
+        pr_trig->c.location = location;
         pr_trig->ncopies = 1;
-        pr_trig->condit_idx = get_script_current_condition();
+        pr_trig->c.condit_idx = get_script_current_condition();
+        // TODO: this whole function looks weird and possible wrong. why at Runtime we are adding a new trigger?
         gameadd.script.party_triggers_num++;
     }
 }

@@ -41,7 +41,7 @@ extern "C" {
 
 /******************************************************************************/
 
-extern void process_party(struct PartyTrigger* pr_trig);
+extern void process_party_trigger(struct PartyTrigger* pr_trig);
 extern void process_tunneler_party(struct TunnellerTrigger *tn_trig);
 
 #define CONDITION_ALWAYS (CONDITIONS_COUNT)
@@ -115,21 +115,22 @@ static void command_add_party_to_level(struct ParserContext *context, long plr_r
                                                  PARTY_TRIGGERS_COUNT];
         gameadd.script.party_triggers_num++;
     }
-        pr_trig->flags = TrgF_CREATE_PARTY;
-        pr_trig->flags |= next_command_reusable?TrgF_REUSABLE:0;
+        pr_trig->c.flags = TrgF_CREATE_PARTY;
+        pr_trig->c.flags |= next_command_reusable?TrgF_REUSABLE:0;
         pr_trig->plyr_idx = plr_id;
         pr_trig->creatr_id = prty_id;
-        pr_trig->location = location;
+        pr_trig->c.location = location;
         pr_trig->ncopies = ncopies;
-        pr_trig->condit_idx = get_script_current_condition();
+        pr_trig->c.condit_idx = get_script_current_condition();
         pr_trig->target_group = (context->active_group != NULL)? context->active_group->id: 0;
+        pr_trig->c.precommands = context->precommands;
     if (get_script_current_condition() == CONDITION_ALWAYS)
     {
-        process_party(pr_trig);
+        process_party_trigger(pr_trig);
     }
 }
 
-static void command_add_object_to_level(const char *obj_name, const char *locname, long arg, const char* playername)
+static void command_add_object_to_level(struct ParserContext *context, const char *obj_name, const char *locname, long arg, const char* playername)
 {
     TbMapLocation location;
     long obj_id = get_rid(object_desc, obj_name);
@@ -153,22 +154,32 @@ static void command_add_object_to_level(const char *obj_name, const char *locnam
     // Recognize place where party is created
     if (!get_map_location_id(locname, &location))
         return;
+    struct PartyTrigger trig_now = {0};
+    struct PartyTrigger *pr_trig;
     if (get_script_current_condition() == CONDITION_ALWAYS)
     {
-        script_process_new_object(obj_id, location, arg, plr_id);
-    } else
+        pr_trig = &trig_now;
+    }
+    else
     {
-        struct PartyTrigger* pr_trig = &gameadd.script.party_triggers[gameadd.script.party_triggers_num % PARTY_TRIGGERS_COUNT];
-        pr_trig->flags = TrgF_CREATE_OBJECT;
-        pr_trig->flags |= next_command_reusable?TrgF_REUSABLE:0;
+        pr_trig = &gameadd.script.party_triggers[gameadd.script.party_triggers_num %
+                                                                      PARTY_TRIGGERS_COUNT];
+        gameadd.script.party_triggers_num++;
+    }
+        pr_trig->c.flags = TrgF_CREATE_OBJECT;
+        pr_trig->c.flags |= next_command_reusable?TrgF_REUSABLE:0;
         pr_trig->plyr_idx = plr_id;
         pr_trig->creatr_id = obj_id & 0x7F;
         pr_trig->crtr_level = ((obj_id >> 7) & 7); // No more than 1023 different classes of objects :)
         pr_trig->carried_gold = arg;
-        pr_trig->location = location;
+        pr_trig->c.location = location;
         pr_trig->ncopies = 1;
-        pr_trig->condit_idx = get_script_current_condition();
-        gameadd.script.party_triggers_num++;
+        pr_trig->c.condit_idx = get_script_current_condition();
+        pr_trig->target_group = (context->active_group != NULL)? context->active_group->id: 0;
+        pr_trig->c.precommands = context->precommands;
+    if (get_script_current_condition() == CONDITION_ALWAYS)
+    {
+        process_party_trigger(pr_trig);
     }
 }
 
@@ -216,20 +227,21 @@ static void command_add_creature_to_level(struct ParserContext *context, long pl
                                                                       PARTY_TRIGGERS_COUNT];
         gameadd.script.party_triggers_num++;
     }
-    pr_trig->flags = TrgF_CREATE_CREATURE;
-    pr_trig->flags |= next_command_reusable?TrgF_REUSABLE:0;
+    pr_trig->c.flags = TrgF_CREATE_CREATURE;
+    pr_trig->c.flags |= next_command_reusable?TrgF_REUSABLE:0;
 
     pr_trig->plyr_idx = plr_id;
     pr_trig->creatr_id = crtr_id;
     pr_trig->crtr_level = crtr_level-1;
     pr_trig->carried_gold = carried_gold;
-    pr_trig->location = location;
+    pr_trig->c.location = location;
     pr_trig->ncopies = ncopies;
-    pr_trig->condit_idx = get_script_current_condition();
+    pr_trig->c.condit_idx = get_script_current_condition();
     pr_trig->target_group = (context->active_group != NULL)? context->active_group->id: 0;
+    pr_trig->c.precommands = context->precommands;
     if (get_script_current_condition() == CONDITION_ALWAYS)
     {
-        process_party(pr_trig);
+        process_party_trigger(pr_trig);
     }
 }
 
@@ -559,17 +571,18 @@ static void command_add_tunneller_to_level(struct ParserContext *context, long p
                                                      PARTY_TRIGGERS_COUNT];
         gameadd.script.tunneller_triggers_num++;
     }
-        set_flag_value(tn_trig->flags, TrgF_REUSABLE, next_command_reusable);
-        clear_flag(tn_trig->flags, TrgF_DISABLED);
+        set_flag_value(tn_trig->c.flags, TrgF_REUSABLE, next_command_reusable);
+        clear_flag(tn_trig->c.flags, TrgF_DISABLED);
         tn_trig->plyr_idx = plr_id;
-        tn_trig->location = location;
+        tn_trig->c.location = location;
         tn_trig->heading = heading;
         tn_trig->carried_gold = carried_gold;
         tn_trig->crtr_level = crtr_level-1;
         tn_trig->carried_gold = carried_gold;
         tn_trig->party_id = 0;
-        tn_trig->condit_idx = get_script_current_condition();
+        tn_trig->c.condit_idx = get_script_current_condition();
         tn_trig->target_group = (context->active_group != NULL)? context->active_group->id: 0;
+        tn_trig->c.precommands = context->precommands;
         gameadd.script.tunneller_triggers_num++;
     if (get_script_current_condition() == CONDITION_ALWAYS)
     {
@@ -628,17 +641,18 @@ static void command_add_tunneller_party_to_level(struct ParserContext *context, 
                                                  PARTY_TRIGGERS_COUNT];
         gameadd.script.tunneller_triggers_num++;
     }
-        set_flag_value(tn_trig->flags, TrgF_REUSABLE, next_command_reusable);
-        clear_flag(tn_trig->flags, TrgF_DISABLED);
+        set_flag_value(tn_trig->c.flags, TrgF_REUSABLE, next_command_reusable);
+        clear_flag(tn_trig->c.flags, TrgF_DISABLED);
         tn_trig->plyr_idx = plr_id;
-        tn_trig->location = location;
+        tn_trig->c.location = location;
         tn_trig->heading = heading;
         tn_trig->carried_gold = carried_gold;
         tn_trig->crtr_level = crtr_level-1;
         tn_trig->carried_gold = carried_gold;
         tn_trig->party_id = prty_id+1;
-        tn_trig->condit_idx = get_script_current_condition();
+        tn_trig->c.condit_idx = get_script_current_condition();
         tn_trig->target_group = (context->active_group != NULL)? context->active_group->id: 0;
+        tn_trig->c.precommands = context->precommands;
     if (get_script_current_condition() == CONDITION_ALWAYS)
     {
         process_tunneler_party(tn_trig);
@@ -1582,7 +1596,7 @@ void script_add_command(struct ParserContext *context, const struct CommandDesc 
         command_add_creature_to_level(context, scline->np[0], scline->tp[1], scline->tp[2], scline->np[3], scline->np[4], scline->np[5]);
         break;
     case Cmd_ADD_OBJECT_TO_LEVEL:
-        command_add_object_to_level(scline->tp[0], scline->tp[1], scline->np[2], scline->tp[3]);
+        command_add_object_to_level(context, scline->tp[0], scline->tp[1], scline->np[2], scline->tp[3]);
         break;
     case Cmd_ENDIF:
         pop_condition();

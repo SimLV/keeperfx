@@ -52,7 +52,7 @@ void command_init_value(struct ScriptValue* value, unsigned long var_index, unsi
     value->condit_idx = get_script_current_condition();
 }
 
-struct Thing *script_process_new_object(ThingModel tngmodel, TbMapLocation location, long arg, unsigned long plr_range_id)
+struct Thing *script_process_new_object(struct ScriptContext *context, ThingModel tngmodel, TbMapLocation location, long arg, unsigned long plr_range_id)
 {
     
     int tngowner = plr_range_id;
@@ -60,7 +60,7 @@ struct Thing *script_process_new_object(ThingModel tngmodel, TbMapLocation locat
 
     const unsigned char tngclass = TCls_Object;
 
-    if(!get_coords_at_location(&pos,location))
+    if(!get_coords_at_location(&pos,location, context))
     {
         return INVALID_THING;
     }
@@ -104,11 +104,11 @@ struct Thing *script_process_new_object(ThingModel tngmodel, TbMapLocation locat
     return thing;
 }
 
-struct Thing* script_process_new_effectgen(ThingModel tngmodel, TbMapLocation location, long range)
+struct Thing* script_process_new_effectgen(struct ScriptContext *context, ThingModel tngmodel, TbMapLocation location, long range)
 {
     struct Coord3d pos;
     const unsigned char tngclass = TCls_EffectGen;
-    if (!get_coords_at_location(&pos, location))
+    if (!get_coords_at_location(&pos, location, context))
     {
         ERRORLOG("Couldn't find location %d to create %s", (int)location, thing_class_and_model_name(tngclass, tngmodel));
         return INVALID_THING;

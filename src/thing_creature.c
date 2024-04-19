@@ -6019,7 +6019,7 @@ void illuminate_creature(struct Thing *creatng)
     lgt->radius <<= 1;
 }
 
-struct Thing *script_create_creature_at_location(PlayerNumber plyr_idx, ThingModel crmodel, TbMapLocation location)
+struct Thing *script_create_creature_at_location(struct ScriptContext *context, PlayerNumber plyr_idx, ThingModel crmodel, TbMapLocation location)
 {
     long effect;
     long i = get_map_location_longval(location);
@@ -6053,7 +6053,7 @@ struct Thing *script_create_creature_at_location(PlayerNumber plyr_idx, ThingMod
         effect = 0;
         break;
     case MLoc_METALOCATION:
-        if (!get_coords_at_meta_action(&pos, plyr_idx, i))
+        if (!get_coords_at_meta_action(&pos, plyr_idx, i, context))
         {
             return INVALID_THING;
         }
@@ -6127,9 +6127,9 @@ struct Thing *script_create_creature_at_location(PlayerNumber plyr_idx, ThingMod
     return thing;
 }
 
-struct Thing *script_create_new_creature(PlayerNumber plyr_idx, ThingModel crmodel, TbMapLocation location, long carried_gold, long crtr_level)
+struct Thing *script_create_new_creature(struct ScriptContext *context, PlayerNumber plyr_idx, ThingModel crmodel, TbMapLocation location, long carried_gold, long crtr_level)
 {
-    struct Thing* creatng = script_create_creature_at_location(plyr_idx, crmodel, location);
+    struct Thing* creatng = script_create_creature_at_location(context, plyr_idx, crmodel, location);
     if (thing_is_invalid(creatng))
         return INVALID_THING;
     creatng->creature.gold_carried = carried_gold;
@@ -6141,8 +6141,8 @@ void script_process_new_creatures(struct ScriptContext *context, PlayerNumber pl
 {
     for (long i = 0; i < copies_num; i++)
     {
-        struct Thing *thing = script_create_new_creature(plyr_idx, crmodel, location, carried_gold, crtr_level);
-        script_add_creature_to_result(context, thing);
+        struct Thing *thing = script_create_new_creature(context, plyr_idx, crmodel, location, carried_gold, crtr_level);
+        script_add_thing_to_result(context, thing);
     }
 }
 

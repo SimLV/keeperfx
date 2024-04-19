@@ -198,14 +198,6 @@ struct CommandDesc { // sizeof = 14 // originally was 13
   void (*process_fn)(struct ScriptContext *context); // called from value or from
 };
 
-struct AdvCommandDesc
-{
-    const char *text;
-    intptr_t option;
-    char args[COMMANDDESC_ARGS_COUNT + 1]; // originally was [8]
-    TbBool (*parse_fn)(struct ParserContext *context, intptr_t option);
-};
-
 struct ParserThingGroup
 {
     char                    name[COMMAND_WORD_LEN];
@@ -221,19 +213,12 @@ struct ParserContext
     long file_version;
     struct ParserThingGroup groups[GROUPS_COUNT];
     struct ParserThingGroup *active_group; // Variable to store or load list from/to
-    struct DotCommand *prev_command; // List of commands
-
-    PlayerNumber active_player;
-    TbMapLocation location;
-    ThingModel creature;
-
-    TbBool player_is_set;
-    TbBool location_is_set;
-
-    TbBool (*construct_fn) (struct ParserContext *context);
+    struct ScriptLine *scline; // Command data of current command (including precommands)
+    struct ScriptLine *outer_scline; // Command data of outer command (command which called "this one")
+    SListRecordIdx precommands; // List of precommands for current command
+    int dst_idx;
 
     TbBool preloaded;
-    TbBool is_assign;
 };
 
 // *******
@@ -351,16 +336,17 @@ enum ScriptVariables {
 #define FX_LINE_TIME_PARTS 4
 
 extern char* get_next_token(char *data, struct CommandToken *token);
-extern int script_recognize_params(char **line, const struct CommandDesc *cmd_desc, struct ScriptLine *scline, int *para_level, int expect_level, long file_version);
+extern int script_recognize_params(struct ParserContext *context, char **line, const struct CommandDesc *cmd_desc, int *para_level, int expect_level);
 extern int count_required_parameters(const char *args);
 extern int filter_criteria_type(long desc_type);
 extern long filter_criteria_loc(long desc_type);
+extern struct CommandDesc const *find_command_desc(const struct CommandToken *token, const struct CommandDesc *cmdlist_desc);
 
 struct Thing* script_get_creature_by_criteria(PlayerNumber plyr_idx, ThingModel crmodel, long criteria);
 ThingModel parse_creature_name(const char *creature_name);
 struct ScriptValue *allocate_script_value(void);
-struct Thing *script_process_new_object(ThingModel crmodel, TbMapLocation location, long arg, unsigned long plr_range_id);
-struct Thing* script_process_new_effectgen(ThingModel crmodel, TbMapLocation location, long range);
+struct Thing *script_process_new_object(struct ScriptContext *context, ThingModel crmodel, TbMapLocation location, long arg, unsigned long plr_range_id);
+struct Thing* script_process_new_effectgen(struct ScriptContext *context, ThingModel crmodel, TbMapLocation location, long range);
 void command_init_value(struct ScriptValue* value, unsigned long var_index, unsigned long plr_range_id);
 void command_add_value(unsigned long var_index, unsigned long plr_range_id, long val2, long val3, long val4);
 void set_variable(int player_idx, long var_type, long var_idx, long new_val);

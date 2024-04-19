@@ -37,9 +37,10 @@ extern "C" {
 #define TUNNELLER_TRIGGERS_COUNT 256
 #define SCRIPT_VALUES_COUNT      2048
 #define WIN_CONDITIONS_COUNT     12
-#define DOT_COMMANDS_COUNT       256
 #define GROUPS_COUNT             8
 #define SLIST_RECORDS_COUNT      256
+#define PRECOMMAND_ARGS_COUNT    2
+#define PRECOMMANDS_COUNT        1024
 
 #define CONDITION_ALWAYS (CONDITIONS_COUNT)
 
@@ -64,6 +65,8 @@ struct Condition;
 struct ScriptLine;
 struct ScriptValue;
 struct PartyTrigger;
+struct TunnellerTrigger;
+typedef void (*CommandFn) (struct ScriptContext *context);
 
 struct ScriptContext
 {
@@ -74,15 +77,27 @@ struct ScriptContext
     union {
       struct ScriptValue *value;
       struct PartyTrigger *pr_trig;
+      struct TunnellerTrigger *tn_trig;
+      struct TriggerCommonData *common;
     };
-    SListRecordIdx save_group;
+    SListRecordIdx save_group; // list of things created by this command
+    SListRecordIdx precommand; // current index in list of precommands if any
+    CommandFn command_fn;
+    struct Coord3d active_location;
+};
+
+struct TriggerCommonData
+{
+    SListRecordIdx target_group;
+    SListRecordIdx precommands;
+    unsigned short condit_idx;
+    unsigned char flags;
+    unsigned long location;
 };
 
 struct TunnellerTrigger {
-  unsigned char flags;
-  unsigned short condit_idx;
+    struct TriggerCommonData c;
   unsigned char plyr_idx;
-  unsigned long location;
   unsigned long heading; // originally was 'target'
   long carried_gold;
   unsigned char crtr_level;
@@ -91,8 +106,7 @@ struct TunnellerTrigger {
 };
 
 struct PartyTrigger {
-  unsigned char flags;
-  unsigned short condit_idx;
+    struct TriggerCommonData c;
   char creatr_id;
   union
   {
@@ -101,7 +115,6 @@ struct PartyTrigger {
   };
   union
   {
-      unsigned long location;
       unsigned long countdown;
   };
   unsigned char crtr_level;
@@ -204,13 +217,20 @@ struct ScriptFxLine
     int step;
 };
 
+struct PreCommand
+{
+    int precommand_idx;
+    int np[PRECOMMAND_ARGS_COUNT];
+    int dst_idx;
+};
+
 struct ThingListRecord
 {
     SListRecordIdx next_record;
     union
     {
         ThingIndex thing;
-        DotCommandIdx dot_command;
+        DotCommandIdx precommand;
     };
 };
 
@@ -238,6 +258,8 @@ struct LevelScript {
     struct ThingListRecord list_records[SLIST_RECORDS_COUNT];
     SListRecordIdx free_list_record_num;
     SListRecordIdx free_list_record_idx;
+    struct PreCommand precommands[PRECOMMANDS_COUNT];
+    int free_precommand;
 };
 
 /******************************************************************************/
@@ -274,9 +296,9 @@ void level_version_check(struct ParserContext *context, const struct ScriptLine*
 long get_condition_value(PlayerNumber plyr_idx, unsigned char valtype, unsigned char a3);
 void process_level_script(void);
 
-TbBool make_read_group(struct ParserContext *context);
-void process_dot_script(SListRecordIdx cmd);
-void script_add_creature_to_result(struct ScriptContext *context, struct Thing *thing);
+void process_precommands(struct ScriptContext *context, struct TriggerCommonData *trigger, CommandFn fn);
+TbBool process_advanced_command(struct ParserContext *context, char **line, const struct CommandDesc *command);
+void script_add_thing_to_result(struct ScriptContext *context, struct Thing *thing);
 /******************************************************************************/
 #ifdef __cplusplus
 }

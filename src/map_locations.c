@@ -39,7 +39,7 @@ const struct NamedCommand head_for_desc[] = {
   {NULL,                   0},
 };
 
-TbBool get_coords_at_location(struct Coord3d *pos, TbMapLocation location)
+TbBool get_coords_at_location(struct Coord3d *pos, TbMapLocation location, struct ScriptContext *context)
 {
 
     long i = get_map_location_longval(location);
@@ -56,7 +56,7 @@ TbBool get_coords_at_location(struct Coord3d *pos, TbMapLocation location)
         return get_coords_at_dungeon_heart(pos, i);
         
     case MLoc_METALOCATION:
-        return get_coords_at_meta_action(pos, 0, i);
+        return get_coords_at_meta_action(pos, 0, i, context);
         
     case MLoc_CREATUREKIND:
     case MLoc_OBJECTKIND:
@@ -73,8 +73,7 @@ TbBool get_coords_at_location(struct Coord3d *pos, TbMapLocation location)
     
 }
 
-
-TbBool get_coords_at_meta_action(struct Coord3d *pos, PlayerNumber target_plyr_idx, long i)
+TbBool get_coords_at_meta_action(struct Coord3d *pos, PlayerNumber target_plyr_idx, long i, struct ScriptContext *context)
 {
     
     SYNCDBG(7,"Starting with loc:%ld", i);
@@ -101,6 +100,16 @@ TbBool get_coords_at_meta_action(struct Coord3d *pos, PlayerNumber target_plyr_i
         targetpos.y.val = subtile_coord_center(dungeon->cta_stl_y);
         targetpos.z.val = get_floor_height_at(pos);
         src = &targetpos; 
+        break;
+    case MML_ACTIVE_LOCATION:
+        if (context)
+        {
+            src = &context->active_location;
+        }
+        else
+        {
+            src = &gameadd.triggered_object_location;
+        }
         break;
     default:
         return false;
@@ -265,7 +274,7 @@ TbBool get_map_location_code_name(TbMapLocation location, char *name)
 
 
 // TODO: z location
-void find_location_pos(long location, PlayerNumber plyr_idx, struct Coord3d *pos, const char *func_name)
+void find_location_pos(long location, PlayerNumber plyr_idx, struct Coord3d *pos, struct ScriptContext *context, const char *func_name)
 {
   struct ActionPoint *apt;
   struct Thing *thing;
@@ -318,7 +327,7 @@ void find_location_pos(long location, PlayerNumber plyr_idx, struct Coord3d *pos
         WARNMSG("%s: Thing %d location not found",func_name,i);
       break;
     case MLoc_METALOCATION:
-      if (!get_coords_at_meta_action(pos, plyr_idx, i))
+      if (!get_coords_at_meta_action(pos, plyr_idx, i, context))
         WARNMSG("%s: Metalocation not found %d",func_name,i);
       break;
     case MLoc_CREATUREKIND:
@@ -412,6 +421,12 @@ TbBool get_map_location_id_f(const char *locname, TbMapLocation *location, const
         *location = (((unsigned long)MML_LAST_EVENT) << 12)
             | (((unsigned long)CurrentPlayer) << 4) //TODO: other players
             | MLoc_METALOCATION;
+        return true;
+    }
+    else if (strcmp(locname, "_PRECOMMAND_") == 0)
+    {
+        *location = (((unsigned long)MML_ACTIVE_LOCATION) << 12)
+                    | MLoc_METALOCATION;
         return true;
     }
     else if (strncmp(locname, "COMBAT", strlen("COMBAT")) == 0)

@@ -2049,7 +2049,7 @@ void find_map_location_coords(long location, long *x, long *y, int plyr_idx, con
           WARNMSG("%s: Thing %d location not found",func_name,i);
         break;
     case MLoc_METALOCATION:
-        if (get_coords_at_meta_action(&pos, plyr_idx, i))
+        if (get_coords_at_meta_action(&pos, plyr_idx, i, NULL))
         {
             pos_x = pos.x.stl.num;
             pos_y = pos.y.stl.num;

@@ -1293,10 +1293,10 @@ TbBool script_support_send_tunneller_to_appropriate_dungeon(struct Thing *creatn
     return send_tunneller_to_point_in_dungeon(creatng, plyr_idx, &pos);
 }
 
-struct Thing *script_process_new_tunneler(unsigned char plyr_idx, TbMapLocation location, TbMapLocation heading, unsigned char crtr_level, unsigned long carried_gold)
+struct Thing *script_process_new_tunneler(struct ScriptContext *context, unsigned char plyr_idx, TbMapLocation location, TbMapLocation heading, unsigned char crtr_level, unsigned long carried_gold)
 {
     ThingModel diggerkind = get_players_special_digger_model(game.hero_player_num);
-    struct Thing* creatng = script_create_creature_at_location(plyr_idx, diggerkind, location);
+    struct Thing* creatng = script_create_creature_at_location(context, plyr_idx, diggerkind, location);
     if (thing_is_invalid(creatng))
         return INVALID_THING;
     creatng->creature.gold_carried = carried_gold;

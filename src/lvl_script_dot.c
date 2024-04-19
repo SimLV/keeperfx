@@ -27,17 +27,15 @@
 #include "thing_navigate.h"
 #include "post_inc.h"
 
-enum DotCmd
+enum PrecommandIdx
 {
-    DF_INVALID = 0,
-    DF_FIND_CREATURE,
-    DF_CREATURE_TO_LOC,
-    DF_CREATE_EFFECT,
-    DF_READ_GROUP,
-    DF_CRE_CAST_POWER,
-    DF_CREATE_OBJECT,
+    PCI_INVALID = 0,
+    PCI_LOCATION,
+    PCI_RANDOM,
 };
 
+typedef void (*PreCommandFn)(struct ScriptContext *context, struct PreCommand *cmd, struct TriggerCommonData *dst);
+static void call_chain(struct ScriptContext *context);
 /// ********
 
 SListRecordIdx script_list_add(SListRecordIdx idx)
@@ -143,33 +141,134 @@ struct ThingListRecord *script_list_pop(SListRecordIdx *idx)
 }
 
 /// ********
-
-void script_add_creature_to_result(struct ScriptContext *context, struct Thing *thing)
+/*
+ * Saves things to context so it will be optionally saved to a group
+ * */
+void script_add_thing_to_result(struct ScriptContext *context, struct Thing *thing)
 {
     SCRIPT_LIST_ADD(context->save_group)->thing = thing->index;
 }
 
 /// ********
-static TbBool whine(struct ParserContext *context)
-{
-    WARNMSG("Script line has no effect at %d", text_line_number);
-    return false;
-}
 
-static TbBool cmd_random(struct ParserContext *context, intptr_t option)
+static void check_random(struct ParserContext *context, const struct ScriptLine *scline)
 {
-    return true;
+    SCRPTERRLOG("Not implemented");
 }
 
 /// ********
 
-const struct AdvCommandDesc advanced_subcommands[] = {
-        {"RANDOM", 0, "Aaaaaa", cmd_random},
-        {NULL,     0, "",       0}
+static void cmd_location(struct ScriptContext *context, struct PreCommand *cmd, struct TriggerCommonData *dst)
+{
+    SListRecordIdx cmd_idx = gameadd.script.groups[cmd->np[0]];
+    SListRecordIdx next_precommand = context->precommand;
+
+    struct ThingListRecord *cmd_item;
+    for (; cmd_idx != 0; cmd_idx = cmd_item->next_record)
+    {
+        cmd_item = &gameadd.script.list_records[cmd_idx];
+
+        context->active_location = thing_get(cmd_item->thing)->mappos;
+        context->precommand = next_precommand; // restore so each precommand and a command will run again each turn of a for
+        call_chain(context);
+    }
+}
+
+static void check_location(struct ParserContext *context, const struct ScriptLine *scline)
+{
+    int idx = gameadd.script.free_precommand++;
+    struct PreCommand *cmd = &gameadd.script.precommands[idx];
+    cmd->precommand_idx = PCI_LOCATION;
+    cmd->np[0] = scline->np[0];
+    strcpy(context->outer_scline->tp[context->dst_idx], "_PRECOMMAND_");
+
+    SCRIPT_LIST_ADD(context->precommands)->precommand = idx;
+}
+
+/// ********
+
+static void whine(struct ScriptContext *context, struct PreCommand *cmd, struct TriggerCommonData *dst)
+{
+    WARNMSG("Invalid precommand");
+}
+
+/// ********
+
+const struct CommandDesc advanced_subcommands[] = {
+        {"RANDOM",   "Aaaaaa", 0, &check_random, NULL},
+        {"LOCATION", "G", 0, &check_location, NULL},
+        {NULL,       "",       0, NULL, NULL}
 };
 
+const PreCommandFn pre_commands[] = {
+        whine,
+        cmd_location
+};
 /// ********
 
-void process_dot_script(SListRecordIdx cmd_idx)
+TbBool process_advanced_command(struct ParserContext *context, char **line, const struct CommandDesc *command)
 {
+    if (command == NULL)
+    {
+        return false;
+    }
+    int required = count_required_parameters(command->args);
+
+    struct ScriptLine *outer_scline = context->outer_scline;
+    struct ScriptLine new_line = { 0 };
+    context->outer_scline = context->scline;
+    context->scline = &new_line;
+    int args_count = script_recognize_params(context, line, command, 0, 0);
+    if (args_count < 0)
+    {
+        context->scline = context->outer_scline;
+        context->outer_scline = outer_scline;
+        return false;
+    }
+    if (args_count < COMMANDDESC_ARGS_COUNT)
+    {
+        if (args_count < required)
+        {
+            SCRPTERRLOG("Not enough parameters for \"%s\", got only %d", command->textptr, args_count);
+            context->scline = context->outer_scline;
+            context->outer_scline = outer_scline;
+            return false;
+        }
+    }
+    command->check_fn(context, &new_line);
+    context->scline = context->outer_scline;
+    context->outer_scline = outer_scline;
+    return true;
+}
+/// ********
+
+/*
+ * Call next precommands and finally a command
+ */
+static void call_chain(struct ScriptContext *context)
+{
+    if (context->precommand == 0)
+    {
+        context->command_fn(context);
+        return;
+    }
+    struct ThingListRecord *cmd_item = &gameadd.script.list_records[context->precommand];
+    struct PreCommand *cmd = &gameadd.script.precommands[cmd_item->precommand];
+
+    if (cmd->precommand_idx >= STATIC_SIZE(pre_commands))
+    {
+        ERRORLOG("Invalid command index!");
+        return;
+    }
+
+    context->precommand = cmd_item->next_record;
+    PreCommandFn fn = pre_commands[cmd->precommand_idx];
+    fn(context, cmd, context->common);
+}
+
+void process_precommands(struct ScriptContext *context, struct TriggerCommonData *trigger, CommandFn command_fn)
+{
+    context->command_fn = command_fn;
+    context->precommand = trigger->precommands;
+    call_chain(context);
 }

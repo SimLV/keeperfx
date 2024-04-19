@@ -206,7 +206,7 @@ TbBool creature_can_be_transferred(const struct Thing* thing);
 int get_creature_health_permil(const struct Thing *thing);
 /******************************************************************************/
 struct Thing *script_create_new_creature(struct ScriptContext *context, PlayerNumber plyr_idx, ThingModel crmodel, TbMapLocation location, long carried_gold, long crtr_level);
-struct Thing *script_create_creature_at_location(PlayerNumber plyr_idx, ThingModel crmodel, TbMapLocation location);
+struct Thing *script_create_creature_at_location(struct ScriptContext *context, PlayerNumber plyr_idx, ThingModel crmodel, TbMapLocation location);
 void script_process_new_creatures(struct ScriptContext *context, PlayerNumber plyr_idx, ThingModel crmodel, long location, long copies_num, long carried_gold, long crtr_level);
 PlayerNumber get_appropriate_player_for_creature(struct Thing *creatng);
 /******************************************************************************/

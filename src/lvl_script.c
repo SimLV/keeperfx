@@ -236,22 +236,7 @@ char* get_next_token(char *data, struct CommandToken *token)
     return p;
 }
 
-static struct AdvCommandDesc const *find_dot_command(const struct CommandToken *token, const struct AdvCommandDesc *cmdlist_desc)
-{
-    const struct AdvCommandDesc* cmnd_desc = NULL;
-    int token_len = token->end - token->start;
-    for (int i = 0; cmdlist_desc[i].text != NULL; i++)
-    {
-        if ((cmdlist_desc[i].text[token_len] == 0) && (strncmp(cmdlist_desc[i].text, token->start, token_len) == 0))
-        {
-            cmnd_desc = &cmdlist_desc[i];
-            break;
-        }
-    }
-    return cmnd_desc;
-}
-
-static struct CommandDesc const *find_command_desc(const struct CommandToken *token, const struct CommandDesc *cmdlist_desc)
+struct CommandDesc const *find_command_desc(const struct CommandToken *token, const struct CommandDesc *cmdlist_desc)
 {
     const struct CommandDesc* cmnd_desc = NULL;
     int token_len = token->end - token->start;
@@ -268,15 +253,26 @@ static struct CommandDesc const *find_command_desc(const struct CommandToken *to
 
 static struct ParserThingGroup *find_group_name(struct CommandToken *token, struct ParserContext *context)
 {
-    int name_len = token->end - token->bracket - 2; // [somename]
+    int name_len;
+    const char* start;
+    if (*token->bracket == '[') // [somename]
+    {
+        name_len = token->end - token->bracket - 2;
+        start = token->bracket + 1;
+    }
+    else
+    { // somename
+        name_len = token->end - token->start;
+        start = token->start;
+    }
     if (name_len < 0)
         return NULL;
-    for (int i = 0; i < STATIC_SIZE(context->groups); i++)
+    for (int i = 1; i < STATIC_SIZE(context->groups); i++)
     {
         struct ParserThingGroup *group = &context->groups[i];
         if (!group->used)
             continue;
-        if ((group->name[name_len] == 0) && (strncmp(group->name, token->bracket + 1, name_len) == 0))
+        if ((group->name[name_len] == 0) && (strncmp(group->name, start, name_len) == 0))
         {
             return group;
         }
@@ -576,7 +572,7 @@ long get_players_range_from_str_f(const char *plrname, int *plr_start, int *plr_
     return plr_range_id;
 }
 
-static TbBool script_command_param_to_number(char type_chr, struct ScriptLine *scline, int idx, TbBool extended)
+static TbBool script_command_param_to_number(struct ParserContext *context, char type_chr, struct ScriptLine *scline, int idx, TbBool extended)
 {
     switch (toupper(type_chr))
     {
@@ -657,6 +653,25 @@ static TbBool script_command_param_to_number(char type_chr, struct ScriptLine *s
         };break;
     case 'A':
         break;
+    case 'G':
+        {
+            struct CommandToken token;
+            get_next_token(scline->tp[idx], &token);
+            if (token.type != TkCommand)
+            {
+                SCRPTERRLOG("Unexpected token instead of group, \"%s\"", scline->tp[idx]);
+                return false;
+            }
+            struct ParserThingGroup *group = find_group_name(&token, context);
+            if (group == NULL)
+            {
+                SCRPTERRLOG("Unknown group, \"%s\"", scline->tp[idx]);
+                return false;
+            }
+            scline->np[idx] = group->id;
+            return true;
+        }
+        break;
     case '!': // extended sign
         return true;
     default:
@@ -730,7 +745,7 @@ int count_required_parameters(const char *args)
     return required;
 }
 
-static TbBool process_subfunc(char **line, struct ScriptLine *scline, const struct CommandDesc *cmd_desc, const struct CommandDesc *funcmd_desc, int *para_level, int src, int dst, long file_version)
+static TbBool process_subfunc(struct ParserContext *context, char **line, const struct CommandDesc *cmd_desc, const struct CommandDesc *funcmd_desc, int *para_level, int src, int dst)
 {
     struct CommandToken token;
     struct ScriptLine* funscline = (struct ScriptLine*)LbMemoryAlloc(sizeof(struct ScriptLine));
@@ -739,7 +754,7 @@ static TbBool process_subfunc(char **line, struct ScriptLine *scline, const stru
         return false;
     }
     LbMemorySet(funscline, 0, sizeof(struct ScriptLine));
-    LbMemoryCopy(funscline->tcmnd, scline->tp[dst], MAX_TEXT_LENGTH);
+    LbMemoryCopy(funscline->tcmnd, context->scline->tp[dst], MAX_TEXT_LENGTH);
     char *nxt = get_next_token(*line, &token);
     if (token.type != TkOpen)
     {
@@ -748,7 +763,10 @@ static TbBool process_subfunc(char **line, struct ScriptLine *scline, const stru
         return false;
     }
     *line = nxt;
-    int args_count = script_recognize_params(line, funcmd_desc, funscline, para_level, *para_level, file_version);
+    struct ScriptLine* scline = context->scline;
+    context->scline = funscline;
+    int args_count = script_recognize_params(context, line, funcmd_desc, para_level, *para_level);
+    context->scline = scline;
     if (args_count < 0)
     {
         LbMemoryFree(funscline);
@@ -805,7 +823,7 @@ static TbBool process_subfunc(char **line, struct ScriptLine *scline, const stru
                         {
                             funscline->np[fi] = atol(funscline->tp[fi]);
                         }
-                        if (!script_command_param_to_number(chr, funscline, fi, false)) {
+                        if (!script_command_param_to_number(context, chr, funscline, fi, false)) {
                             SCRPTERRLOG("Parameter %d of function \"%s\" within command \"%s\" has unexpected range end value; discarding command", fi+1, funcmd_desc->textptr, scline->tcmnd);
                             LbMemoryFree(funscline);
                             return false;
@@ -819,7 +837,7 @@ static TbBool process_subfunc(char **line, struct ScriptLine *scline, const stru
                     } else
                     {
                         // Single value or first step of defining range
-                        if (!script_command_param_to_number(chr, funscline, fi, false)) {
+                        if (!script_command_param_to_number(context, chr, funscline, fi, false)) {
                             SCRPTERRLOG("Parameter %d of function \"%s\" within command \"%s\" has unexpected value; discarding command", fi+1, funcmd_desc->textptr, scline->tcmnd);
                             LbMemoryFree(funscline);
                             return false;
@@ -857,10 +875,11 @@ static TbBool process_subfunc(char **line, struct ScriptLine *scline, const stru
                 break;
             }
             // The new RANDOM command stores values to allow selecting different one every turn during gameplay
-            if ((funcmd_desc->index == Cmd_RANDOM) && (level_file_version > 0))
+            if ((funcmd_desc->index == Cmd_RANDOM) && (level_file_version == 1))
             {
                 //TODO RANDOM make implementation - store ranges as variable to be used for selecting random value during gameplay
-                SCRPTERRLOG("The function \"%s\" used within command \"%s\" is not supported yet", funcmd_desc->textptr, scline->tcmnd);
+                SCRPTERRLOG("The function \"%s\" used within command \"%s\" is not supported yet",
+                            funcmd_desc->textptr, context->scline->tcmnd);
                 break;
             }
             // DRAWFROM support - select random index now
@@ -922,7 +941,7 @@ static TbBool process_subfunc(char **line, struct ScriptLine *scline, const stru
     return true;
 }
 
-int script_recognize_params(char **line, const struct CommandDesc *cmd_desc, struct ScriptLine *scline, int *para_level, int expect_level, long file_version)
+int script_recognize_params(struct ParserContext *context, char **line, const struct CommandDesc *cmd_desc, int *para_level, int expect_level)
 {
     int dst, src;
     TbBool reparse = false;
@@ -948,7 +967,7 @@ int script_recognize_params(char **line, const struct CommandDesc *cmd_desc, str
         {
             reparse = false;
             // Access tp[dst] only if we're sure dst < COMMANDDESC_ARGS_COUNT
-            strncpy(scline->tp[dst], token.start, min(token.end - token.start, MAX_TEXT_LENGTH));
+            strncpy(context->scline->tp[dst], token.start, min(token.end - token.start, MAX_TEXT_LENGTH));
         }
         else
         {
@@ -959,30 +978,39 @@ int script_recognize_params(char **line, const struct CommandDesc *cmd_desc, str
                 dst--;
                 return -1;
             }
-            else if ((token.type == TkClose) && ((chr == ' ') || (chr == 0)))
+            else if (token.type == TkClose)
             {
                 break;
             }
             else if ((token.type != TkNumber) && (token.type != TkCommand) && (token.type != TkString))
             {
                 // Don't show parameter index - it may be bad, as we're decreasing dst to not overflow cmd_desc->args
-                SCRPTWRNLOG("Excessive parameter of command \"%s\", value \"%s\"; ignoring", scline->tcmnd, funcmd_buf);
+                SCRPTWRNLOG("Excessive parameter of command \"%s\", value \"%s\"; ignoring", context->scline->tcmnd, funcmd_buf);
                 dst--;
                 continue;
             }
             // Access tp[dst] only if we're sure dst < COMMANDDESC_ARGS_COUNT
-            strncpy(scline->tp[dst], token.start, min(token.end - token.start, MAX_TEXT_LENGTH));
+            strncpy(context->scline->tp[dst], token.start, min(token.end - token.start, MAX_TEXT_LENGTH));
 
-            funcmd_desc = find_command_desc(&token, subfunction_desc);
+            funcmd_desc = find_command_desc(&token, (context->file_version > 1)? subfunction_desc2: subfunction_desc);
 
             if (funcmd_desc != NULL)
             {
-                int r = process_subfunc(line, scline, cmd_desc, funcmd_desc, para_level, src, dst, file_version);
-                if (r == -1)
-                    return -1;
+                if (!process_subfunc(context, line, cmd_desc, funcmd_desc, para_level, src, dst))
+                    return false;
             }
+            struct CommandToken token2 = token;
+
             *line = get_next_token(*line, &token);
 
+            if (token.type == TkOpen)
+            {
+                funcmd_desc = find_command_desc(&token2, advanced_subcommands);
+                context->dst_idx = dst;
+                if (!process_advanced_command(context, line, funcmd_desc))
+                    return -1;
+                *line = get_next_token(*line, &token);
+            }
             if (token.type == TkRangeOperator)
             {
                 // Operator ~ goes to A/a chr
@@ -990,10 +1018,15 @@ int script_recognize_params(char **line, const struct CommandDesc *cmd_desc, str
             }
             else if ((token.type != TkClose) && (token.type != TkComma))
             {
-                if ((cmd_desc->args[src + 1] != 'O') || (token.type != TkOperator))
+                if (token.type == TkEnd)
+                {
+                    SCRPTERRLOG("Unexpected end of line, discarding command \"%s\"", context->scline->tcmnd);
+                    return -1;
+                }
+                else if ((cmd_desc->args[src + 1] != 'O') || (token.type != TkOperator))
                 {
                     SCRPTERRLOG("Unexpected token after parameter %d of command \"%s\", discarding command", dst + 1,
-                                scline->tcmnd);
+                                context->scline->tcmnd);
                     return -1;
                 }
                 else if (token.type == TkOperator)
@@ -1002,7 +1035,7 @@ int script_recognize_params(char **line, const struct CommandDesc *cmd_desc, str
                 }
             }
         }
-        if (scline->tp[dst][0] == '\0') {
+        if (context->scline->tp[dst][0] == '\0') {
           break;
         }
         chr = cmd_desc->args[src];
@@ -1015,8 +1048,9 @@ int script_recognize_params(char **line, const struct CommandDesc *cmd_desc, str
         {
             extended = true;
         }
-        if (!script_command_param_to_number(chr, scline, dst, extended)) {
-            SCRPTERRLOG("Parameter %d of command \"%s\", type %c, has unexpected value; discarding command", dst + 1, scline->tcmnd, chr);
+        if (!script_command_param_to_number(context, chr, context->scline, dst, extended)) {
+            SCRPTERRLOG("Parameter %d of command \"%s\", type %c, has unexpected value; discarding command", dst + 1,
+                        context->scline->tcmnd, chr);
             return -1;
         }
     }
@@ -1044,12 +1078,13 @@ TbBool script_scan_line(char *line, struct ParserContext *context)
         SCRPTERRLOG("Syntax error: Script command expected");
         return false;
     }
+    context->precommands = 0;
     cmd_desc = find_command_desc(&token, context->commands);
 
     if (cmd_desc == NULL)
     {
         line = get_next_token(line, &token2);
-        if (token2.type == TkAssign)
+        if ((context->file_version > 1) && (token2.type == TkAssign))
         {
             context->active_group = find_group_name(&token, context);
             if (context->preloaded) // create groups on first pass
@@ -1070,7 +1105,6 @@ TbBool script_scan_line(char *line, struct ParserContext *context)
                 SCRPTERRLOG("Syntax error: Unexpected group near %15s", token.start);
                 return false;
             }
-            context->is_assign = true;
 
             line = get_next_token(line, &token2);
             if (token.type != TkCommand)
@@ -1129,7 +1163,8 @@ TbBool script_scan_line(char *line, struct ParserContext *context)
     else if (token.type == TkOpen)
     {
         // Recognizing parameters
-        args_count = script_recognize_params(&line, cmd_desc, scline, &para_level, 0, context->file_version);
+        context->scline = scline;
+        args_count = script_recognize_params(context, &line, cmd_desc, &para_level, 0);
         if (args_count < 0)
         {
             LbMemoryFree(scline);
@@ -1178,6 +1213,7 @@ short clear_script(void)
     LbMemorySet(&gameadd.script, 0, sizeof(struct LevelScript));
     gameadd.script.next_string = gameadd.script.strings;
     gameadd.script.free_list_record_num = 1;
+    gameadd.script.free_precommand = 1;
     set_script_current_condition(CONDITION_ALWAYS);
     text_line_number = 1;
     for (long i = 0; i < QUICK_MESSAGES_COUNT; i++)
@@ -1377,17 +1413,15 @@ static void add_to_party_process(struct ScriptContext *context)
     add_member_to_party(pr_trig->party_id, pr_trig->creatr_id, pr_trig->crtr_level, pr_trig->carried_gold, pr_trig->objectv, pr_trig->countdown);
 }
 
-void process_party(struct PartyTrigger* pr_trig)
+void process_party(struct ScriptContext *context)
 {
-    struct ScriptContext context = {0};
+    struct PartyTrigger *pr_trig = context->pr_trig;
     long n = pr_trig->creatr_id;
 
-    context.pr_trig = pr_trig;
-
-    switch (pr_trig->flags & TrgF_COMMAND_MASK)
+    switch (pr_trig->c.flags & TrgF_COMMAND_MASK)
     {
     case TrgF_ADD_TO_PARTY:
-        add_to_party_process(&context);
+        add_to_party_process(context);
         break;
     case TrgF_DELETE_FROM_PARTY:
         delete_member_from_party(pr_trig->party_id, pr_trig->creatr_id, pr_trig->crtr_level);
@@ -1395,23 +1429,32 @@ void process_party(struct PartyTrigger* pr_trig)
     case TrgF_CREATE_OBJECT:
         n |= ((pr_trig->crtr_level & 7) << 7);
         SYNCDBG(6, "Adding object %d at location %d", (int)n, (int)pr_trig->location);
-        script_process_new_object(n, pr_trig->location, pr_trig->carried_gold, pr_trig->plyr_idx);
+        script_process_new_object(context, n, pr_trig->c.location, pr_trig->carried_gold, pr_trig->plyr_idx);
         break;
     case TrgF_CREATE_EFFECT_GENERATOR:
         SYNCDBG(6, "Adding effect generator %d at location %d", pr_trig->crtr_level, (int)pr_trig->location);
-        script_process_new_effectgen(pr_trig->crtr_level, pr_trig->location, pr_trig->carried_gold);
+        script_process_new_effectgen(context, pr_trig->crtr_level, pr_trig->c.location, pr_trig->carried_gold);
         break;
     case TrgF_CREATE_PARTY:
         SYNCDBG(6, "Adding player %d party %d at location %d", (int)pr_trig->plyr_idx, (int)n, (int)pr_trig->location);
-        script_process_new_party(&context, &gameadd.script.creature_partys[n],
-            pr_trig->plyr_idx, pr_trig->location, pr_trig->ncopies);
+        script_process_new_party(context, &gameadd.script.creature_partys[n],
+            pr_trig->plyr_idx, pr_trig->c.location, pr_trig->ncopies);
         break;
     case TrgF_CREATE_CREATURE:
         SCRIPTDBG(6, "Adding creature %d", n);
-        script_process_new_creatures(&context, pr_trig->plyr_idx, n, pr_trig->location,
+        script_process_new_creatures(context, pr_trig->plyr_idx, n, pr_trig->c.location,
             pr_trig->ncopies, pr_trig->carried_gold, pr_trig->crtr_level);
         break;
     }
+}
+
+void process_party_trigger(struct PartyTrigger* pr_trig)
+{
+    struct ScriptContext context = {0};
+    context.pr_trig = pr_trig;
+
+    process_precommands(&context, &pr_trig->c, &process_party);
+
     if (pr_trig->target_group)
     {
         script_list_free(gameadd.script.groups[pr_trig->target_group]);
@@ -1428,33 +1471,32 @@ void process_check_new_creature_partys()
     for (long i = 0; i < gameadd.script.party_triggers_num; i++)
     {
         struct PartyTrigger* pr_trig = &gameadd.script.party_triggers[i];
-        if ((pr_trig->flags & TrgF_DISABLED) == 0)
+        if ((pr_trig->c.flags & TrgF_DISABLED) == 0)
         {
-            if (is_condition_met(pr_trig->condit_idx))
+            if (is_condition_met(pr_trig->c.condit_idx))
             {
-                process_party(pr_trig);
-                if ((pr_trig->flags & TrgF_REUSABLE) == 0)
-                    set_flag(pr_trig->flags, TrgF_DISABLED);
+                process_party_trigger(pr_trig);
+                if ((pr_trig->c.flags & TrgF_REUSABLE) == 0)
+                    set_flag(pr_trig->c.flags, TrgF_DISABLED);
             }
       }
     }
 }
 
-void process_tunneler_party(struct TunnellerTrigger *tn_trig)
+void process_tunneler_party(struct ScriptContext *context)
 {
-    struct ScriptContext context = {0};
-    
+    struct TunnellerTrigger *tn_trig = context->tn_trig;
         long k = tn_trig->party_id;
         if (k > 0)
         {
             long n = tn_trig->plyr_idx;
             SCRIPTDBG(6, "Adding tunneler party %d", k);
-            struct Thing* thing = script_process_new_tunneler(n, tn_trig->location, tn_trig->heading,
+            struct Thing* thing = script_process_new_tunneler(context, n, tn_trig->c.location, tn_trig->heading,
                 tn_trig->crtr_level, tn_trig->carried_gold);
-            script_add_creature_to_result(&context, thing);
+            script_add_thing_to_result(context, thing);
             if (!thing_is_invalid(thing))
             {
-                struct Thing* grptng = script_process_new_party(&context, &gameadd.script.creature_partys[k - 1], n, tn_trig->location, 1);
+                struct Thing* grptng = script_process_new_party(context, &gameadd.script.creature_partys[k - 1], n, tn_trig->c.location, 1);
                 if (!thing_is_invalid(grptng))
                 {
                     add_creature_to_group_as_leader(thing, grptng);
@@ -1468,13 +1510,19 @@ void process_tunneler_party(struct TunnellerTrigger *tn_trig)
         else
         {
             SCRIPTDBG(6, "Adding tunneler, heading %d", tn_trig->heading);
-            struct Thing *thing = script_process_new_tunneler(tn_trig->plyr_idx, tn_trig->location,
+            struct Thing *thing = script_process_new_tunneler(context, tn_trig->plyr_idx, tn_trig->c.location,
                                                               tn_trig->heading,
                                                               tn_trig->crtr_level, tn_trig->carried_gold);
-            script_add_creature_to_result(&context, thing);
+            script_add_thing_to_result(context, thing);
         }
-        if ((tn_trig->flags & TrgF_REUSABLE) == 0)
-            tn_trig->flags |= TrgF_DISABLED;
+}
+
+/* This function starts whole chain of precommands and a command */
+static void process_tunneler_party_trigger(struct TunnellerTrigger *tn_trig)
+{
+    struct ScriptContext context = {0};
+
+    process_precommands(&context, &tn_trig->c, &process_tunneler_party);
 
     if (tn_trig->target_group)
     {
@@ -1492,11 +1540,13 @@ void process_check_new_tunneller_partys()
     for (long i = 0; i < gameadd.script.tunneller_triggers_num; i++)
     {
         struct TunnellerTrigger* tn_trig = &gameadd.script.tunneller_triggers[i];
-        if ((tn_trig->flags & TrgF_DISABLED) == 0)
+        if ((tn_trig->c.flags & TrgF_DISABLED) == 0)
         {
-            if (is_condition_met(tn_trig->condit_idx))
+            if (is_condition_met(tn_trig->c.condit_idx))
             {
-                process_tunneler_party(tn_trig);
+                process_tunneler_party_trigger(tn_trig);
+                if ((tn_trig->c.flags & TrgF_REUSABLE) == 0)
+                    tn_trig->c.flags |= TrgF_DISABLED;
             }
         }
     }
